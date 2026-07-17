@@ -1,16 +1,13 @@
-import React from 'react';
+import Home from './pages/home';
 
-function App() {
+export default function App() {
   return (
-    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
-      <h1 className="text-4xl font-black text-red-500 tracking-wider mb-2">
-        ME-ANIM 🍿
-      </h1>
-      <p className="text-slate-400 font-medium text-sm">
-        Tailwind CSS + React di Termux udah sukses jalan!
-      </p>
+    <div className="min-h-screen bg-slate-900 text-white">
+      {/* Nanti lu bisa taruh Navbar di sini */}
+      
+      <Home /> {/* Halaman Home lu dirender di sini */}
+      
+      {/* Nanti lu bisa taruh Footer di sini */}
     </div>
   );
 }
-
-export default App;
