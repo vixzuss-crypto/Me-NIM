@@ -1,13 +1,12 @@
+import Navbar from './components/Navbar';
 import Home from './pages/home';
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      {/* Nanti lu bisa taruh Navbar di sini */}
-      
-      <Home /> {/* Halaman Home lu dirender di sini */}
-      
-      {/* Nanti lu bisa taruh Footer di sini */}
+    // Pake min-h-screen biar tingginya ngikutin konten, jangan pake h-screen!
+    <div className="min-h-screen w-full bg-slate-950 text-white">
+      <Navbar /> 
+      <Home />
     </div>
   );
 }
