@@ -10,3 +10,6 @@ export const getRecent = (page = 1) => axios.get(`${BASE_URL}samehadaku/recent?p
 
 // 3. Cari anime berdasarkan kata kunci (q) dan pagination
 export const searchAnime = (query, page = 1) => axios.get(`${BASE_URL}samehadaku/search?q=${query}&page=${page}`);
+
+// 4. Mengambil anime yang sedang populer (Udah difix sesuai format lu)
+export const getPopularAnime = (page = 1) => axios.get(`${BASE_URL}samehadaku/popular?page=${page}`);
