@@ -1,8 +1,16 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 export default function AnimeCard({ anime, isNew }) {
+  // Ambil ID/slug anime dari data API Samehadaku
+  const animeId = anime.animeId || anime.slug || anime.endpointId || anime.endpoint || anime.id;
+
   return (
-    <div className="group flex flex-col bg-slate-900/40 rounded-xl overflow-hidden cursor-pointer">
+    // ✅ Mengarahkan langsung ke /detail/:animeId
+    <Link 
+      to={`/detail/${animeId}`} 
+      className="group flex flex-col bg-slate-900/40 rounded-xl overflow-hidden cursor-pointer"
+    >
       <div className="relative aspect-[3/4] overflow-hidden bg-slate-950 rounded-xl">
         <img 
           src={anime.poster || anime.image || anime.thumb} 
@@ -24,6 +32,6 @@ export default function AnimeCard({ anime, isNew }) {
           {anime.title}
         </h3>
       </div>
-    </div>
+    </Link>
   );
 }
