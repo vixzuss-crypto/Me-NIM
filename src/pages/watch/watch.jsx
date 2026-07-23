@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { getEpisodeStream, getAnimeServer } from "../../api/anime/api";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  ExternalLink,
+  Server,
+  Loader2,
+  VideoOff,
+  CheckCircle,
+  AlertTriangle,
+} from "lucide-react";
 
 // Domain yang DIKETAHUI blokir embed
 const BLOCKED_DOMAINS = [
@@ -143,38 +155,60 @@ export default function Watch() {
     loadServer(servers, idx);
   };
 
+  // animeId untuk tombol kembali ke halaman detail
+  const animeId = streamData?.animeId;
+
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <main className="w-full max-w-5xl mx-auto px-4 py-6">
-      <Link to={-1} className="text-xs font-semibold text-indigo-400 hover:underline mb-4 inline-block">
-        ← Kembali
-      </Link>
+
+      {/* ── TOP NAV ─────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-4">
+        {/* Tombol kembali ke detail anime */}
+        {animeId ? (
+          <Link
+            to={`/detail/${animeId}`}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Kembali ke Detail
+          </Link>
+        ) : (
+          <Link
+            to={-1}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Kembali
+          </Link>
+        )}
+
+        {/* Navigasi Prev / Next */}
+        <div className="flex gap-2">
+          {streamData?.hasPrevEpisode && streamData?.prevEpisode && (
+            <Link
+              to={`/watch/${streamData.prevEpisode.episodeId}`}
+              className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-all"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Sebelumnya
+            </Link>
+          )}
+          {streamData?.hasNextEpisode && streamData?.nextEpisode && (
+            <Link
+              to={`/watch/${streamData.nextEpisode.episodeId}`}
+              className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-all"
+            >
+              Berikutnya
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          )}
+        </div>
+      </div>
 
       <h1 className="text-lg sm:text-xl font-bold text-white mb-4">
         {streamData?.title || "Nonton Anime"}
       </h1>
-
-      {/* ── NAVIGASI PREV / NEXT EPISODE ─────────────────────────────────── */}
-      {(streamData?.hasPrevEpisode || streamData?.hasNextEpisode) && (
-        <div className="flex gap-2 mb-4">
-          {streamData.hasPrevEpisode && streamData.prevEpisode && (
-            <Link
-              to={`/watch/${streamData.prevEpisode.episodeId}`}
-              className="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-all"
-            >
-              ← Ep Sebelumnya
-            </Link>
-          )}
-          {streamData.hasNextEpisode && streamData.nextEpisode && (
-            <Link
-              to={`/watch/${streamData.nextEpisode.episodeId}`}
-              className="text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-all"
-            >
-              Ep Berikutnya →
-            </Link>
-          )}
-        </div>
-      )}
 
       {/* ── VIDEO PLAYER ─────────────────────────────────────────────────── */}
       <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
@@ -182,7 +216,7 @@ export default function Watch() {
         {/* Loading */}
         {(loading || serverLoading) && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 text-slate-400 text-xs z-10">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800" />
+            <Loader2 className="w-7 h-7 animate-spin text-indigo-500" />
             <span>Memuat Player...</span>
           </div>
         )}
@@ -190,10 +224,7 @@ export default function Watch() {
         {/* Embed diblokir */}
         {!loading && !serverLoading && embedBlocked && iframeUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-950 text-center px-6 z-10">
-            <svg className="w-10 h-10 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5"
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+            <Lock className="w-10 h-10 text-yellow-400" />
             <div>
               <p className="text-sm font-bold text-white">Server Ini Memblokir Embed</p>
               <p className="text-xs text-slate-400 max-w-xs leading-relaxed mt-1">
@@ -201,18 +232,19 @@ export default function Watch() {
                 atau tonton langsung di tab baru.
               </p>
             </div>
-            <a href={iframeUrl} target="_blank" rel="noopener noreferrer"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                  d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-              </svg>
+            <a
+              href={iframeUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all inline-flex items-center gap-2"
+            >
+              <ExternalLink className="w-4 h-4" />
               Buka di Tab Baru
             </a>
           </div>
         )}
 
-        {/* Iframe (embed berhasil) */}
+        {/* Iframe */}
         {!loading && !serverLoading && iframeUrl && !embedBlocked && (
           <iframe
             src={iframeUrl}
@@ -226,23 +258,25 @@ export default function Watch() {
 
         {/* Tidak ada URL */}
         {!loading && !serverLoading && !iframeUrl && (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-500">
-            Video tidak ditemukan atau server offline.
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500">
+            <VideoOff className="w-8 h-8" />
+            <span className="text-xs">Video tidak ditemukan atau server offline.</span>
           </div>
         )}
       </div>
 
-      {/* ── TOMBOL BUKA TAB BARU (saat embed sukses, opsional) ───────────── */}
+      {/* ── FALLBACK BUKA TAB BARU (embed aktif tapi mau manual) ─────────── */}
       {iframeUrl && !embedBlocked && !loading && !serverLoading && (
         <div className="mt-3 flex items-center justify-between gap-3 bg-slate-900/60 px-4 py-3 rounded-xl border border-slate-800">
           <p className="text-[11px] text-slate-500">Player tidak muncul? Coba server lain atau buka di tab baru.</p>
-          <a href={iframeUrl} target="_blank" rel="noopener noreferrer"
-            className="shrink-0 text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors">
+          <a
+            href={iframeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
             Tab Baru
-            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2"
-                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
+            <ExternalLink className="w-3 h-3" />
           </a>
         </div>
       )}
@@ -250,26 +284,32 @@ export default function Watch() {
       {/* ── PILIHAN SERVER ────────────────────────────────────────────────── */}
       {servers.length > 0 && (
         <div className="mt-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-          <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider">Server Streaming</h3>
+          <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
+            <Server className="w-3.5 h-3.5" />
+            Server Streaming
+          </h3>
           <div className="flex flex-wrap gap-2">
             {servers.map((srv, idx) => {
               const isActive = selectedIdx === idx;
-              // Tandai "Blogspot" sebagai rekomendasi (bisa embed)
-              const isRecommended = srv.title?.toLowerCase().includes("blogspot") ||
-                                    srv.title?.toLowerCase().includes("blogger");
+              const isRecommended =
+                srv.title?.toLowerCase().includes("blogspot") ||
+                srv.title?.toLowerCase().includes("blogger");
 
               return (
                 <button
                   key={idx}
                   onClick={() => handleServerChange(idx)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isActive
                       ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
                       : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
                 >
                   {isRecommended && (
-                    <span className={`text-[9px] ${isActive ? "text-emerald-300" : "text-emerald-400"}`}>✓</span>
+                    <CheckCircle className={`w-3 h-3 ${isActive ? "text-emerald-300" : "text-emerald-400"}`} />
+                  )}
+                  {!isRecommended && (
+                    <AlertTriangle className={`w-3 h-3 ${isActive ? "text-yellow-300" : "text-yellow-600"}`} />
                   )}
                   {srv.title}
                   {srv.quality && (
@@ -281,7 +321,10 @@ export default function Watch() {
               );
             })}
           </div>
-          <p className="text-[10px] text-slate-600 mt-2.5">✓ = bisa langsung diputar di halaman ini</p>
+          <p className="text-[10px] text-slate-600 mt-2.5 flex items-center gap-3">
+            <span className="inline-flex items-center gap-1"><CheckCircle className="w-2.5 h-2.5 text-emerald-600" /> bisa langsung diputar</span>
+            <span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5 text-yellow-700" /> perlu dibuka di tab baru</span>
+          </p>
         </div>
       )}
     </main>
