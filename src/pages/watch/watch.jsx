@@ -282,6 +282,7 @@ export default function Watch() {
       )}
 
       {/* ── PILIHAN SERVER ────────────────────────────────────────────────── */}
+      {/* ── PILIHAN SERVER ────────────────────────────────────────────────── */}
       {servers.length > 0 && (
         <div className="mt-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
           <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
