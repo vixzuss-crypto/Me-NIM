@@ -27,7 +27,5 @@ export const getAnimeDetail = (animeId) => axios.get(`${BASE_URL}samehadaku/anim
 export const getEpisodeStream = (episodeId) => axios.get(`${BASE_URL}samehadaku/episode/${episodeId}`);
 
 // Tambahkan jika belum ada di api.js
-export const getAnimeServer = async (serverId) => {
-  const response = await fetch(`https://DOMAIN_API_LU/anime/samehadaku/server/${serverId}`);
-  return await response.json();
-};
+export const getAnimeServer = (serverId) =>
+  axios.get(`${BASE_URL}samehadaku/server/${serverId}`);
