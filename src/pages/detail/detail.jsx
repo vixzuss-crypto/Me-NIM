@@ -15,7 +15,7 @@ import {
 export default function DetailAnime() {
   const { animeId } = useParams();
   const [detail, setDetail] = useState(null);
-  const [raw, setRaw] = useState(null); // simpan raw buat debug
+  const [raw, setRaw] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
