@@ -26,6 +26,6 @@ export const getAnimeDetail = (animeId) => axios.get(`${BASE_URL}samehadaku/anim
 // Contoh usage: getEpisodeStream('one-piece-episode-1100')
 export const getEpisodeStream = (episodeId) => axios.get(`${BASE_URL}samehadaku/episode/${episodeId}`);
 
-// Tambahkan jika belum ada di api.js
+// 7. benerin
 export const getAnimeServer = (serverId) =>
   axios.get(`${BASE_URL}samehadaku/server/${serverId}`);
