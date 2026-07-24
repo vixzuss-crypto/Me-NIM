@@ -19,39 +19,45 @@ export default function Home() {
   const [page,         setPage]         = useState(1);
   const [showAll,      setShowAll]      = useState(false); // false=15 card, true=30 card
 
-  const sectionRef = useRef(null); // ref ke section "Update Terbaru"
+  const sectionRef   = useRef(null);  // ref ke section "Update Terbaru"
+  const popularCache = useRef(null);  // cache popular, fetch sekali saja
+  const abortRef     = useRef(false); // flag abort untuk StrictMode double-invoke
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
   useEffect(() => {
+    abortRef.current = false; // reset tiap effect baru
+
+    const extractList = (res) => {
+      if (!res?.data?.data) return [];
+      return Array.isArray(res.data.data)
+        ? res.data.data
+        : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
+    };
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
     const fetchData = async () => {
       setLoading(true);
       try {
         if (activeSearch) {
           const res = await searchAnime(activeSearch, page);
-          if (res?.data?.data) {
-            const list = Array.isArray(res.data.data)
-              ? res.data.data
-              : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
-            setSearchList(list);
-          }
+          if (abortRef.current) return;
+          const list = extractList(res);
+          setSearchList(list);
+
         } else {
-          // Fetch 2 halaman sekaligus supaya ada cukup data untuk Show More (target 30)
-          const [resRecent, resRecentNext, resPopular] = await Promise.all([
-            getRecent(page),
-            getRecent(page + 1),
-            getPopularAnime(1),
-          ]);
+          // ── Recent page N (sequential + delay supaya tidak kena 429) ──
+          const res1 = await getRecent(page);
+          if (abortRef.current) return;
+          const listPage1 = extractList(res1);
 
-          const extractList = (res) => {
-            if (!res?.data?.data) return [];
-            return Array.isArray(res.data.data)
-              ? res.data.data
-              : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
-          };
+          await wait(300);
+          if (abortRef.current) return;
 
-          const listPage1 = extractList(resRecent);
-          const listPage2 = extractList(resRecentNext);
-          // Gabung dan buang duplikat berdasarkan animeId/slug
+          const res2 = await getRecent(page + 1);
+          if (abortRef.current) return;
+          const listPage2 = extractList(res2);
+
+          // Gabung + deduplikasi
           const combined = [...listPage1, ...listPage2].filter(
             (anime, idx, arr) =>
               arr.findIndex(
@@ -61,22 +67,31 @@ export default function Home() {
           setRecentList(combined);
           setShowAll(false);
 
-          if (resPopular?.data?.data) {
-            const list = Array.isArray(resPopular.data.data)
-              ? resPopular.data.data
-              : Object.values(resPopular.data.data).find((v) => Array.isArray(v)) || [];
-            if (list.length >= 3) {
-              setAllTimeTop3([list[1], list[0], list[2]]);
+          // ── Popular: fetch sekali, simpan di cache selamanya ──
+          if (!popularCache.current) {
+            await wait(300);
+            if (abortRef.current) return;
+            const resPopular = await getPopularAnime(1);
+            if (abortRef.current) return;
+            const popList = extractList(resPopular);
+            if (popList.length >= 3) {
+              popularCache.current = [popList[1], popList[0], popList[2]];
             }
+          }
+          if (!abortRef.current && popularCache.current) {
+            setAllTimeTop3(popularCache.current);
           }
         }
       } catch (err) {
-        console.error('Error fetching data:', err);
+        if (!abortRef.current) console.error('Error fetching data:', err);
       }
-      setLoading(false);
+      if (!abortRef.current) setLoading(false);
     };
 
     fetchData();
+
+    // Cleanup: batalkan fetch kalau deps berubah atau StrictMode re-invoke
+    return () => { abortRef.current = true; };
   }, [page, activeSearch]);
 
   const handleSearch = (e) => {
