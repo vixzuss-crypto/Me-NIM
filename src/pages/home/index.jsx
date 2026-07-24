@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { getRecent, getPopularAnime, searchAnime } from '../../api/anime/api';
 import Top3all from '../../components/Top3all';
 import AnimeCard from '../../components/AnimeCard';
+import Carousel from '../../components/Carousel';
+import Footer from '../../components/Footer';
 
 export default function Home() {
   const [recentList, setRecentList] = useState([]);
@@ -28,17 +30,15 @@ export default function Home() {
             getPopularAnime(1)
           ]);
 
-          // Set data Recent Update
           if (resRecent?.data?.data) {
             const list = Array.isArray(resRecent.data.data) ? resRecent.data.data : Object.values(resRecent.data.data).find(val => Array.isArray(val)) || [];
             setRecentList(list);
           }
 
-          // Set data Top 3 Terpopuler dari API popular
           if (resPopular?.data?.data) {
             const list = Array.isArray(resPopular.data.data) ? resPopular.data.data : Object.values(resPopular.data.data).find(val => Array.isArray(val)) || [];
             if (list.length >= 3) {
-              setAllTimeTop3([list[1], list[0], list[2]]); // Susunan Podium: Juara 2, Juara 1, Juara 3
+              setAllTimeTop3([list[1], list[0], list[2]]);
             }
           }
         }
@@ -69,7 +69,7 @@ export default function Home() {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full bg-slate-900 border border-slate-800 text-slate-100 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500 transition-colors"
           />
-          <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl">
+          <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl cursor-pointer">
             Cari
           </button>
         </form>
@@ -97,10 +97,9 @@ export default function Home() {
       ) : (
         /* DISPLAY BERANDA */
         <div className="space-y-10">
-          {/* PANGGUNG PODIUM TOP 3 */}
-          <Top3all popularTop3={allTimeTop3} />
+          <Carousel />
 
-          {/* SEKSI NEW UPDATE ANIME */}
+          {/* SEKSI NEW UPDATE ANIME (DI ATAS) */}
           <div>
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-lg font-bold text-white tracking-tight">New Update Anime</h2>
@@ -114,17 +113,19 @@ export default function Home() {
             
             {/* Pagination */}
             <div className="flex items-center justify-center gap-3 mt-8">
-              <button onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page === 1} className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-40">← Prev</button>
+              <button onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page === 1} className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-40 cursor-pointer">← Prev</button>
               <span className="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl">Hal {page}</span>
-              <button onClick={() => setPage((prev) => prev + 1)} className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800">Next →</button>
+              <button onClick={() => setPage((prev) => prev + 1)} className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 cursor-pointer">Next →</button>
             </div>
           </div>
+
+          {/* TOP 3 ANIME TERPOPULER (PINDAH KE BAWAH) */}
+          <Top3all popularTop3={allTimeTop3} />
         </div>
       )}
 
-      <footer className="border-t border-slate-900/50 py-6 text-center text-[10px] text-slate-600 mt-12">
-        <p>© 2026 ME-ANIM. All rights reserved.</p>
-      </footer>
+      {/* FOOTER */}
+      <Footer />
     </main>
   );
 }
