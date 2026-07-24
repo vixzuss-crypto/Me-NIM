@@ -27,8 +27,8 @@ export default function DetailAnime() {
         setRaw(data); // debug
         setDetail(data);
         // DEBUG: lihat semua key yang tersedia
-        console.log("[Detail] Keys:", Object.keys(data || {}));
-        console.log("[Detail] Full data:", JSON.stringify(data, null, 2));
+        // console.log("[Detail] Keys:", Object.keys(data || {}));
+        // console.log("[Detail] Full data:", JSON.stringify(data, null, 2));
       } catch (err) {
         console.error("[Detail] Gagal load:", err);
       }

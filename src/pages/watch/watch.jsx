@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { getEpisodeStream, getAnimeServer } from "../../api/anime/api";
 import {
   ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
   Lock,
   ExternalLink,
   Server,
@@ -12,15 +10,14 @@ import {
   VideoOff,
   CheckCircle,
   AlertTriangle,
+  List,
 } from "lucide-react";
 
-// Domain yang DIKETAHUI blokir embed
+// ─── Domain lists ─────────────────────────────────────────────────────────────
 const BLOCKED_DOMAINS = [
   "filedon.co", "netu.tv", "desustream.com", "vidstream.io",
   "kwik.si", "samehadaku.care", "rplayer.co", "streamlare.com",
 ];
-
-// Domain yang DIKETAHUI bisa di-embed
 const EMBEDDABLE_DOMAINS = [
   "blogger.com", "blogspot.com", "googlevideo.com", "drive.google.com",
 ];
@@ -29,22 +26,15 @@ function isBlocked(url = "") {
   try { return BLOCKED_DOMAINS.some((d) => new URL(url).hostname.includes(d)); }
   catch { return false; }
 }
-
 function isEmbeddable(url = "") {
   try { return EMBEDDABLE_DOMAINS.some((d) => new URL(url).hostname.includes(d)); }
   catch { return false; }
 }
 
-// ─── Flatten data.server.qualities → array server datar ──────────────────────
-// Struktur API:
-//   data.server.qualities = [
-//     { title: "720p", serverList: [{ title: "Wibufile 720p", serverId: "..." }] },
-//     ...
-//   ]
+// ─── Flatten data.server.qualities ───────────────────────────────────────────
 function flattenServers(data) {
   const qualities = data?.server?.qualities;
   if (!Array.isArray(qualities)) return [];
-
   const result = [];
   for (const q of qualities) {
     if (!Array.isArray(q.serverList)) continue;
@@ -53,43 +43,39 @@ function flattenServers(data) {
       result.push({
         title: srv.title,
         serverId: srv.serverId,
-        quality: q.title === "unknown" ? "" : q.title, // sembunyikan label "unknown"
+        quality: q.title === "unknown" ? "" : q.title,
       });
     }
   }
   return result;
 }
 
-// ─── Tentukan server terbaik untuk dicoba pertama ─────────────────────────────
-// Preferensi: Blogspot/Blogger > kualitas tertinggi > server pertama
 function pickBestIndex(servers) {
-  // Cari yang namanya mengandung "blogspot" atau "blogger" duluan
   const blogIdx = servers.findIndex((s) =>
     s.title?.toLowerCase().includes("blogspot") ||
     s.title?.toLowerCase().includes("blogger")
   );
   if (blogIdx >= 0) return blogIdx;
-
-  // Kalau tidak ada, cari kualitas 720p dulu
   const hd = servers.findIndex((s) => s.quality === "720p");
   if (hd >= 0) return hd;
-
-  return 0; // fallback server pertama
+  return 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Watch() {
   const { episodeId } = useParams();
+  const navigate = useNavigate();
 
-  const [streamData, setStreamData]       = useState(null);
-  const [servers, setServers]             = useState([]);   // flat server list
-  const [iframeUrl, setIframeUrl]         = useState("");
-  const [selectedIdx, setSelectedIdx]     = useState(null);
-  const [embedBlocked, setEmbedBlocked]   = useState(false);
-  const [loading, setLoading]             = useState(true);
+  const [streamData,    setStreamData]    = useState(null);
+  const [servers,       setServers]       = useState([]);
+  const [iframeUrl,     setIframeUrl]     = useState("");
+  const [selectedIdx,   setSelectedIdx]   = useState(null);
+  const [embedBlocked,  setEmbedBlocked]  = useState(false);
+  const [loading,       setLoading]       = useState(true);
   const [serverLoading, setServerLoading] = useState(false);
+  const [showEpList,    setShowEpList]    = useState(false);
 
-  // ─── Load data episode ──────────────────────────────────────────────────
+  // ─── Load episode ─────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       setLoading(true);
@@ -97,6 +83,7 @@ export default function Watch() {
       setSelectedIdx(null);
       setEmbedBlocked(false);
       setServers([]);
+      setStreamData(null);
 
       try {
         const res = await getEpisodeStream(episodeId);
@@ -104,45 +91,33 @@ export default function Watch() {
         setStreamData(data);
 
         const flat = flattenServers(data);
-
         if (flat.length > 0) {
           setServers(flat);
-          const bestIdx = pickBestIndex(flat);
-          await loadServer(flat, bestIdx);
+          await loadServer(flat, pickBestIndex(flat));
         } else {
-          // Tidak ada server list → pakai defaultStreamingUrl (biasanya filedon)
-          const url = data?.defaultStreamingUrl || data?.url || "";
-          resolveUrl(url);
+          resolveUrl(data?.defaultStreamingUrl || data?.url || "");
         }
       } catch (err) {
-        console.error("[Watch] Error loading episode:", err);
+        console.error("[Watch] Error:", err);
       }
-
       setLoading(false);
     };
-
     init();
   }, [episodeId]);
 
-  // ─── Fetch URL dari endpoint /server/:serverId ────────────────────────────
   const loadServer = async (serverList, idx) => {
     const srv = serverList[idx];
     setSelectedIdx(idx);
     setIframeUrl("");
     setEmbedBlocked(false);
     setServerLoading(true);
-
     try {
       const res = await getAnimeServer(srv.serverId);
-      // axios: res.data.data | res.data
-      // fetch mentah: res langsung
       const d = res?.data?.data || res?.data || res;
-      const url = d?.url || d?.iframeUrl || d?.link || d?.embed || "";
-      resolveUrl(url);
+      resolveUrl(d?.url || d?.iframeUrl || d?.link || d?.embed || "");
     } catch (err) {
-      console.error("[Watch] Error loading server:", err);
+      console.error("[Watch] Server error:", err);
     }
-
     setServerLoading(false);
   };
 
@@ -151,69 +126,56 @@ export default function Watch() {
     setEmbedBlocked(!!url && isBlocked(url));
   };
 
-  const handleServerChange = (idx) => {
-    loadServer(servers, idx);
-  };
-
-  // animeId untuk tombol kembali ke halaman detail
+  // ─── Data turunan ─────────────────────────────────────────────────────────
   const animeId = streamData?.animeId;
+
+  // Ambil episode list dari recommendedEpisodeList atau fallback ke prev/next saja
+  // API sudah return recommendedEpisodeList berisi episode-episode terkait anime yang sama
+  const episodeList = streamData?.recommendedEpisodeList || [];
+
+  // Urutkan berdasarkan nomor episode (dari judul, ekstrak angkanya)
+  const sortedEpList = [...episodeList].sort((a, b) => {
+    const numA = parseInt(a.title?.match(/\d+/)?.[0] ?? "0");
+    const numB = parseInt(b.title?.match(/\d+/)?.[0] ?? "0");
+    return numA - numB;
+  });
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <main className="w-full max-w-5xl mx-auto px-4 py-6">
 
-      {/* ── TOP NAV ─────────────────────────────────────────────────────── */}
+      {/* ── TOP BAR ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-4">
-        {/* Tombol kembali ke detail anime */}
-        {animeId ? (
-          <Link
-            to={`/detail/${animeId}`}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Kembali ke Detail
-          </Link>
-        ) : (
-          <Link
-            to={-1}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Kembali
-          </Link>
-        )}
+        <Link
+          to={animeId ? `/detail/${animeId}` : -1}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          {animeId ? "Kembali ke Detail" : "Kembali"}
+        </Link>
 
-        {/* Navigasi Prev / Next */}
-        <div className="flex gap-2">
-          {streamData?.hasPrevEpisode && streamData?.prevEpisode && (
-            <Link
-              to={`/watch/${streamData.prevEpisode.episodeId}`}
-              className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-all"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              Sebelumnya
-            </Link>
-          )}
-          {streamData?.hasNextEpisode && streamData?.nextEpisode && (
-            <Link
-              to={`/watch/${streamData.nextEpisode.episodeId}`}
-              className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-lg transition-all"
-            >
-              Berikutnya
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
-          )}
-        </div>
+        {/* Tombol toggle episode list */}
+        {sortedEpList.length > 0 && (
+          <button
+            onClick={() => setShowEpList((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all border ${
+              showEpList
+                ? "bg-indigo-600 border-indigo-500 text-white"
+                : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800"
+            }`}
+          >
+            <List className="w-3.5 h-3.5" />
+            Daftar Episode
+          </button>
+        )}
       </div>
 
-      <h1 className="text-lg sm:text-xl font-bold text-white mb-4">
+      <h1 className="text-base sm:text-lg font-bold text-white mb-4 leading-snug">
         {streamData?.title || "Nonton Anime"}
       </h1>
 
       {/* ── VIDEO PLAYER ─────────────────────────────────────────────────── */}
       <div className="relative w-full aspect-video bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
-
-        {/* Loading */}
         {(loading || serverLoading) && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 text-slate-400 text-xs z-10">
             <Loader2 className="w-7 h-7 animate-spin text-indigo-500" />
@@ -221,7 +183,6 @@ export default function Watch() {
           </div>
         )}
 
-        {/* Embed diblokir */}
         {!loading && !serverLoading && embedBlocked && iframeUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-950 text-center px-6 z-10">
             <Lock className="w-10 h-10 text-yellow-400" />
@@ -232,19 +193,14 @@ export default function Watch() {
                 atau tonton langsung di tab baru.
               </p>
             </div>
-            <a
-              href={iframeUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all inline-flex items-center gap-2"
-            >
+            <a href={iframeUrl} target="_blank" rel="noopener noreferrer"
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all inline-flex items-center gap-2">
               <ExternalLink className="w-4 h-4" />
               Buka di Tab Baru
             </a>
           </div>
         )}
 
-        {/* Iframe */}
         {!loading && !serverLoading && iframeUrl && !embedBlocked && (
           <iframe
             src={iframeUrl}
@@ -256,7 +212,6 @@ export default function Watch() {
           />
         )}
 
-        {/* Tidak ada URL */}
         {!loading && !serverLoading && !iframeUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-500">
             <VideoOff className="w-8 h-8" />
@@ -265,26 +220,57 @@ export default function Watch() {
         )}
       </div>
 
-      {/* ── FALLBACK BUKA TAB BARU (embed aktif tapi mau manual) ─────────── */}
+      {/* ── FALLBACK TAB BARU ────────────────────────────────────────────── */}
       {iframeUrl && !embedBlocked && !loading && !serverLoading && (
         <div className="mt-3 flex items-center justify-between gap-3 bg-slate-900/60 px-4 py-3 rounded-xl border border-slate-800">
           <p className="text-[11px] text-slate-500">Player tidak muncul? Coba server lain atau buka di tab baru.</p>
-          <a
-            href={iframeUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            Tab Baru
-            <ExternalLink className="w-3 h-3" />
+          <a href={iframeUrl} target="_blank" rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">
+            Tab Baru <ExternalLink className="w-3 h-3" />
           </a>
         </div>
       )}
 
-      {/* ── PILIHAN SERVER ────────────────────────────────────────────────── */}
-      {/* ── PILIHAN SERVER ────────────────────────────────────────────────── */}
+      {/* ── EPISODE LIST (collapsible) ────────────────────────────────────── */}
+      {showEpList && sortedEpList.length > 0 && (
+        <div className="mt-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+          <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
+            <List className="w-3.5 h-3.5" />
+            Pilih Episode
+          </h3>
+          <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1
+            [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-slate-800
+            [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-thumb]:rounded-full">
+            {sortedEpList.map((ep, idx) => {
+              const epId = ep?.episodeId || ep?.id || ep?.slug;
+              const isActive = epId === episodeId;
+              // Ekstrak nomor episode dari judul
+              const epNum = ep.title?.match(/\d+/)?.[0] ?? idx + 1;
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    if (!isActive && epId) navigate(`/watch/${epId}`);
+                  }}
+                  disabled={isActive}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? "bg-indigo-600 text-white cursor-default shadow-lg shadow-indigo-600/30"
+                      : "bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+                  }`}
+                >
+                  Ep {epNum}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── SERVER LIST ──────────────────────────────────────────────────── */}
       {servers.length > 0 && (
-        <div className="mt-6 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+        <div className="mt-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
           <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
             <Server className="w-3.5 h-3.5" />
             Server Streaming
@@ -295,23 +281,20 @@ export default function Watch() {
               const isRecommended =
                 srv.title?.toLowerCase().includes("blogspot") ||
                 srv.title?.toLowerCase().includes("blogger");
-
               return (
                 <button
                   key={idx}
-                  onClick={() => handleServerChange(idx)}
+                  onClick={() => loadServer(servers, idx)}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isActive
                       ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
                       : "bg-slate-800 text-slate-300 hover:bg-slate-700"
                   }`}
                 >
-                  {isRecommended && (
-                    <CheckCircle className={`w-3 h-3 ${isActive ? "text-emerald-300" : "text-emerald-400"}`} />
-                  )}
-                  {!isRecommended && (
-                    <AlertTriangle className={`w-3 h-3 ${isActive ? "text-yellow-300" : "text-yellow-600"}`} />
-                  )}
+                  {isRecommended
+                    ? <CheckCircle className={`w-3 h-3 ${isActive ? "text-emerald-300" : "text-emerald-400"}`} />
+                    : <AlertTriangle className={`w-3 h-3 ${isActive ? "text-yellow-300" : "text-yellow-600"}`} />
+                  }
                   {srv.title}
                   {srv.quality && (
                     <span className={`text-[9px] ${isActive ? "text-indigo-200" : "text-slate-500"}`}>
@@ -323,8 +306,12 @@ export default function Watch() {
             })}
           </div>
           <p className="text-[10px] text-slate-600 mt-2.5 flex items-center gap-3">
-            <span className="inline-flex items-center gap-1"><CheckCircle className="w-2.5 h-2.5 text-emerald-600" /> bisa langsung diputar</span>
-            <span className="inline-flex items-center gap-1"><AlertTriangle className="w-2.5 h-2.5 text-yellow-700" /> perlu dibuka di tab baru</span>
+            <span className="inline-flex items-center gap-1">
+              <CheckCircle className="w-2.5 h-2.5 text-emerald-600" /> bisa langsung diputar
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <AlertTriangle className="w-2.5 h-2.5 text-yellow-700" /> perlu dibuka di tab baru
+            </span>
           </p>
         </div>
       )}

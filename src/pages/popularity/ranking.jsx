@@ -1,96 +1,99 @@
 import { useEffect, useState } from 'react';
-import { getPopularAnime } from '../../api/anime/api'; // Keluar ke pages -> src -> masuk api
-import AnimeCard from '../../components/AnimeCard';   // Keluar ke pages -> src -> masuk components
+import { ChevronLeft, ChevronRight, Trophy } from 'lucide-react';
+import { getPopularAnime } from '../../api/anime/api';
+import AnimeCard from '../../components/AnimeCard';
+import Footer    from '../../components/Footer';
 
 export default function Ranking() {
   const [popularList, setPopularList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
+  const [loading,     setLoading]     = useState(true);
+  const [page,        setPage]        = useState(1);
 
   useEffect(() => {
-    const fetchPopularData = async () => {
+    const fetch_ = async () => {
       setLoading(true);
       try {
         const res = await getPopularAnime(page);
         if (res?.data?.data) {
-          const list = Array.isArray(res.data.data) 
-            ? res.data.data 
-            : Object.values(res.data.data).find(val => Array.isArray(val)) || [];
+          const list = Array.isArray(res.data.data)
+            ? res.data.data
+            : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
           setPopularList(list);
         }
       } catch (err) {
-        console.error("Error fetching popular ranking:", err);
+        console.error('Error fetching popular ranking:', err);
       }
       setLoading(false);
     };
-    fetchPopularData();
+    fetch_();
   }, [page]);
+
+  const changePage = (next) => {
+    setPage(next);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 overflow-x-hidden">
-      {/* HEADER HALAMAN */}
-      <div className="mb-8 flex flex-col gap-2">
-        <a href="/" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors mb-2 block w-fit">
-          ← Kembali ke Beranda
-        </a>
-        <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-          🏆 Peringkat Anime Terpopuler
-        </h1>
-        <p className="text-xs text-slate-400">Daftar anime dengan jumlah penonton terbanyak sepanjang masa.</p>
+
+      {/* ── HEADER ──────────────────────────────────────────────────────── */}
+      <div className="mb-8">
+        <div className="flex items-center gap-2 mb-1">
+          <Trophy className="w-5 h-5 text-amber-400" />
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            Peringkat Terpopuler
+          </h1>
+        </div>
+        <p className="text-xs text-slate-500 ml-7">
+          Anime dengan penonton terbanyak sepanjang masa
+        </p>
       </div>
 
+      {/* ── LOADING ─────────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex min-h-[40vh] items-center justify-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800"></div>
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800" />
         </div>
       ) : (
-        <div>
-          {/* GRID PERINGKAT DARI 1 SAMPAI SETERUSNYA */}
+        <>
+          {/* ── GRID ────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-4">
-            {popularList.map((anime, index) => {
-              // Menghitung nomor peringkat dinamis berdasarkan halaman saat ini
-              const globalRank = (page - 1) * popularList.length + (index + 1);
-
+            {popularList.map((anime, i) => {
+              const globalRank = (page - 1) * popularList.length + i + 1;
               return (
-                <div key={index} className="relative group">
-                  {/* Badge Nomor Peringkat */}
-                  <div className={`absolute -top-2 -left-2 z-20 h-6 w-6 sm:h-7 sm:w-7 rounded-full flex items-center justify-center text-xs font-black shadow-lg border text-slate-950
-                    ${globalRank === 1 ? 'bg-amber-400 border-amber-300 scale-110' : 
-                      globalRank === 2 ? 'bg-slate-300 border-slate-200' : 
-                      globalRank === 3 ? 'bg-amber-700 border-amber-600 text-white' : 
-                      'bg-slate-800 border-slate-700 text-slate-300'}`}
-                  >
-                    {globalRank}
-                  </div>
-
-                  {/* Memakai Kembali Komponen AnimeCard Lu */}
-                  <AnimeCard anime={anime} isNew={false} />
-                </div>
+                <AnimeCard
+                  key={i}
+                  anime={anime}
+                  isNew={false}
+                  rank={globalRank}
+                />
               );
             })}
           </div>
 
-          {/* Navigasi Halaman / Pagination */}
-          <div className="flex items-center justify-center gap-3 mt-12">
-            <button 
-              onClick={() => { setPage((prev) => Math.max(prev - 1, 1)); window.scrollTo(0, 0); }} 
-              disabled={page === 1} 
-              className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-40 cursor-pointer"
+          {/* ── PAGINATION ──────────────────────────────────────────────── */}
+          <div className="flex items-center justify-center gap-2 mt-12">
+            <button
+              onClick={() => changePage(Math.max(page - 1, 1))}
+              disabled={page === 1}
+              className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-900 text-slate-300 px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-30 hover:bg-slate-800 transition-colors"
             >
-              ← Prev
+              <ChevronLeft className="w-3.5 h-3.5" /> Prev
             </button>
-            <span className="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl">
-              Halaman {page}
+            <span className="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl min-w-[4rem] text-center">
+              {page}
             </span>
-            <button 
-              onClick={() => { setPage((prev) => prev + 1); window.scrollTo(0, 0); }} 
-              className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 cursor-pointer"
+            <button
+              onClick={() => changePage(page + 1)}
+              className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-900 text-slate-300 px-4 py-2 rounded-xl border border-slate-800 hover:bg-slate-800 transition-colors"
             >
-              Next →
+              Next <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
+        </>
       )}
+
+      <Footer />
     </main>
   );
 }

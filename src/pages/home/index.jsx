@@ -1,19 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Search, X, ChevronLeft, ChevronRight, Flame, ChevronDown } from 'lucide-react';
 import { getRecent, getPopularAnime, searchAnime } from '../../api/anime/api';
-import Top3all from '../../components/Top3all';
+import Top3all   from '../../components/Top3all';
 import AnimeCard from '../../components/AnimeCard';
-import Carousel from '../../components/Carousel';
-import Footer from '../../components/Footer';
+import Carousel  from '../../components/Carousel';
+import Footer    from '../../components/Footer';
+
+const INITIAL_COUNT = 15;
+const FULL_COUNT    = 30;
 
 export default function Home() {
-  const [recentList, setRecentList] = useState([]);
-  const [allTimeTop3, setAllTimeTop3] = useState([]);
-  const [searchList, setSearchList] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [recentList,   setRecentList]   = useState([]);
+  const [allTimeTop3,  setAllTimeTop3]  = useState([]);
+  const [searchList,   setSearchList]   = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [searchQuery,  setSearchQuery]  = useState('');
   const [activeSearch, setActiveSearch] = useState('');
-  const [page, setPage] = useState(1);
+  const [page,         setPage]         = useState(1);
+  const [showAll,      setShowAll]      = useState(false); // false=15 card, true=30 card
 
+  const sectionRef = useRef(null); // ref ke section "Update Terbaru"
+
+  // ─── Fetch ────────────────────────────────────────────────────────────────
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -21,32 +29,53 @@ export default function Home() {
         if (activeSearch) {
           const res = await searchAnime(activeSearch, page);
           if (res?.data?.data) {
-            const list = Array.isArray(res.data.data) ? res.data.data : Object.values(res.data.data).find(val => Array.isArray(val)) || [];
+            const list = Array.isArray(res.data.data)
+              ? res.data.data
+              : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
             setSearchList(list);
           }
         } else {
-          const [resRecent, resPopular] = await Promise.all([
+          // Fetch 2 halaman sekaligus supaya ada cukup data untuk Show More (target 30)
+          const [resRecent, resRecentNext, resPopular] = await Promise.all([
             getRecent(page),
-            getPopularAnime(1)
+            getRecent(page + 1),
+            getPopularAnime(1),
           ]);
 
-          if (resRecent?.data?.data) {
-            const list = Array.isArray(resRecent.data.data) ? resRecent.data.data : Object.values(resRecent.data.data).find(val => Array.isArray(val)) || [];
-            setRecentList(list);
-          }
+          const extractList = (res) => {
+            if (!res?.data?.data) return [];
+            return Array.isArray(res.data.data)
+              ? res.data.data
+              : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
+          };
+
+          const listPage1 = extractList(resRecent);
+          const listPage2 = extractList(resRecentNext);
+          // Gabung dan buang duplikat berdasarkan animeId/slug
+          const combined = [...listPage1, ...listPage2].filter(
+            (anime, idx, arr) =>
+              arr.findIndex(
+                (a) => (a.animeId || a.slug || a.id) === (anime.animeId || anime.slug || anime.id)
+              ) === idx
+          );
+          setRecentList(combined);
+          setShowAll(false);
 
           if (resPopular?.data?.data) {
-            const list = Array.isArray(resPopular.data.data) ? resPopular.data.data : Object.values(resPopular.data.data).find(val => Array.isArray(val)) || [];
+            const list = Array.isArray(resPopular.data.data)
+              ? resPopular.data.data
+              : Object.values(resPopular.data.data).find((v) => Array.isArray(v)) || [];
             if (list.length >= 3) {
               setAllTimeTop3([list[1], list[0], list[2]]);
             }
           }
         }
       } catch (err) {
-        console.error("Error fetching data:", err);
+        console.error('Error fetching data:', err);
       }
       setLoading(false);
     };
+
     fetchData();
   }, [page, activeSearch]);
 
@@ -54,77 +83,181 @@ export default function Home() {
     e.preventDefault();
     if (!searchQuery.trim()) return;
     setPage(1);
-    setActiveSearch(searchQuery);
+    setActiveSearch(searchQuery.trim());
   };
 
+  const clearSearch = () => {
+    setSearchQuery('');
+    setActiveSearch('');
+    setPage(1);
+  };
+
+  // Ganti halaman + scroll ke section, bukan ke atas halaman
+  const changePage = (next) => {
+    setPage(next);
+    setShowAll(false);
+    // Scroll ke section "Update Terbaru" dengan sedikit offset
+    setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  // Page 1: default 15, show more ke 30
+  // Page 2+: langsung tampil semua (sudah fetch 2 halaman = 30+ card)
+  const visibleList = (page === 1 && !showAll)
+    ? recentList.slice(0, INITIAL_COUNT)
+    : recentList;
+  const hasMore = page === 1 && !showAll && recentList.length > INITIAL_COUNT;
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 overflow-x-hidden">
-      {/* INPUT PENCARIAN */}
-      <div className="mb-6 w-full">
+
+      {/* ── SEARCH BAR ──────────────────────────────────────────────────── */}
+      <div className="mb-6">
         <form onSubmit={handleSearch} className="flex gap-2">
-          <input 
-            type="text" 
-            placeholder="Cari anime seru di sini..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 text-slate-100 text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-indigo-500 transition-colors"
-          />
-          <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl cursor-pointer">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Cari anime..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-slate-900 border border-slate-800 text-slate-100 text-sm rounded-xl pl-9 pr-4 py-2.5 focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="submit"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            <Search className="w-3.5 h-3.5" />
             Cari
           </button>
         </form>
+
         {activeSearch && (
-          <button onClick={() => { setSearchQuery(''); setActiveSearch(''); setPage(1); }} className="mt-2 text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer">
-            ← Kembali ke Beranda
+          <button
+            onClick={clearSearch}
+            className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+          >
+            <ChevronLeft className="w-3 h-3" />
+            Kembali ke Beranda
           </button>
         )}
       </div>
 
+      {/* ── LOADING ─────────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex min-h-[40vh] items-center justify-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800"></div>
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800" />
         </div>
-      ) : activeSearch ? (
-        /* DISPLAY PENCARIAN */
-        <div>
-          <div className="mb-6"><h2 className="text-xl font-bold text-white">Hasil Pencarian: "{activeSearch}"</h2></div>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
-            {searchList.map((anime, index) => (
-              <AnimeCard key={index} anime={anime} isNew={false} />
-            ))}
-          </div>
-        </div>
-      ) : (
-        /* DISPLAY BERANDA */
-        <div className="space-y-10">
-          <Carousel />
 
-          {/* SEKSI NEW UPDATE ANIME (DI ATAS) */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-bold text-white tracking-tight">New Update Anime</h2>
-              <a href="#" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">Lihat Jadwal &gt;</a>
+      ) : activeSearch ? (
+        /* ── HASIL PENCARIAN ────────────────────────────────────────────── */
+        <div>
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="text-[11px] text-slate-500 mb-0.5">Hasil pencarian untuk</p>
+              <h2 className="text-lg font-bold text-white">"{activeSearch}"</h2>
             </div>
+            {searchList.length > 0 && (
+              <span className="text-xs text-slate-500 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
+                {searchList.length} anime
+              </span>
+            )}
+          </div>
+
+          {searchList.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
+              <Search className="w-8 h-8" />
+              <p className="text-sm">Tidak ada hasil untuk "{activeSearch}"</p>
+            </div>
+          ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
-              {recentList.map((anime, index) => (
-                <AnimeCard key={index} anime={anime} isNew={true} />
+              {searchList.map((anime, i) => (
+                <AnimeCard key={i} anime={anime} isNew={false} />
               ))}
             </div>
-            
-            {/* Pagination */}
-            <div className="flex items-center justify-center gap-3 mt-8">
-              <button onClick={() => setPage((prev) => Math.max(prev - 1, 1))} disabled={page === 1} className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-40 cursor-pointer">← Prev</button>
-              <span className="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl">Hal {page}</span>
-              <button onClick={() => setPage((prev) => prev + 1)} className="bg-slate-900 text-slate-300 text-xs px-4 py-2 rounded-xl border border-slate-800 cursor-pointer">Next →</button>
-            </div>
-          </div>
+          )}
+        </div>
 
-          {/* TOP 3 ANIME TERPOPULER (PINDAH KE BAWAH) */}
+      ) : (
+        /* ── BERANDA ────────────────────────────────────────────────────── */
+        <div className="space-y-10">
+
+          {/* Carousel video */}
+          <Carousel />
+
+          {/* ── Update Terbaru ─────────────────────────────────────────── */}
+          <section ref={sectionRef} className="scroll-mt-20">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Flame className="w-4 h-4 text-orange-400" />
+                Update Terbaru
+              </h2>
+              <span className="text-[11px] text-slate-500 bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
+                Hal {page}
+              </span>
+            </div>
+
+            {/* Grid card */}
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
+              {visibleList.map((anime, i) => (
+                <AnimeCard key={i} anime={anime} isNew={true} />
+              ))}
+            </div>
+
+            {/* Show More */}
+            {hasMore && (
+              <div className="flex justify-center mt-5">
+                <button
+                  onClick={() => setShowAll(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 px-5 py-2 rounded-xl transition-all"
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                  Tampilkan lebih banyak ({recentList.length - INITIAL_COUNT} lagi)
+                </button>
+              </div>
+            )}
+
+            {/* Pagination — page 1: muncul setelah show more. Page 2+: selalu tampil */}
+            {(page > 1 || showAll || recentList.length <= INITIAL_COUNT) && (
+              <div className="flex items-center justify-center gap-2 mt-6">
+                <button
+                  onClick={() => changePage(Math.max(page - 1, 1))}
+                  disabled={page === 1}
+                  className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-900 text-slate-300 px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-30 hover:bg-slate-800 transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                </button>
+                <span className="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl min-w-[4rem] text-center">
+                  {page}
+                </span>
+                <button
+                  onClick={() => changePage(page + 1)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-900 text-slate-300 px-4 py-2 rounded-xl border border-slate-800 hover:bg-slate-800 transition-colors"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </section>
+
+          {/* Top 3 Podium */}
           <Top3all popularTop3={allTimeTop3} />
+
         </div>
       )}
 
-      {/* FOOTER */}
       <Footer />
     </main>
   );
