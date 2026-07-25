@@ -1,5 +1,13 @@
 import { Link } from 'react-router-dom';
+
 import { Trophy, Medal, Crown } from 'lucide-react';
+
+// Pastikan URL selalu punya protocol (API kadang return tanpa https://)
+const fixUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `https://${url}`;
+};
 
 const PODIUM = [
   { pos: 2, height: 'h-16 sm:h-20', barColor: 'from-slate-600 to-slate-500', textColor: 'text-slate-300', borderColor: 'border-slate-600', Icon: Medal, iconColor: 'text-slate-300' },
@@ -53,9 +61,10 @@ export default function Top3all({ popularTop3 }) {
               <Link to={`/detail/${animeId}`} className="w-full">
                 <div className={`relative aspect-[3/4] w-full rounded-xl overflow-hidden shadow-lg border ${item.borderColor} ${isFirst ? 'shadow-amber-500/20 scale-105' : ''}`}>
                   <img
-                    src={item.poster || item.image || item.thumb}
+                    src={fixUrl(item.poster || item.image || item.thumb)}
                     alt={item.title}
                     className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
                   />
                   {/* Position badge */}
                   <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shadow

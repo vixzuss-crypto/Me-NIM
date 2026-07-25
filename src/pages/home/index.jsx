@@ -7,7 +7,6 @@ import Carousel  from '../../components/Carousel';
 import Footer    from '../../components/Footer';
 
 const INITIAL_COUNT = 15;
-const FULL_COUNT    = 30;
 
 export default function Home() {
   const [recentList,   setRecentList]   = useState([]);
@@ -35,29 +34,41 @@ export default function Home() {
     };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+    // Fetch dengan retry sekali kalau kena 429
+    const fetchWithRetry = async (fn, retryDelay = 1000) => {
+      try {
+        return await fn();
+      } catch (err) {
+        if (err?.response?.status === 429 && !abortRef.current) {
+          await wait(retryDelay);
+          if (abortRef.current) return null;
+          return await fn();
+        }
+        throw err;
+      }
+    };
+
     const fetchData = async () => {
       setLoading(true);
       try {
         if (activeSearch) {
-          const res = await searchAnime(activeSearch, page);
-          if (abortRef.current) return;
-          const list = extractList(res);
-          setSearchList(list);
+          const res = await fetchWithRetry(() => searchAnime(activeSearch, page));
+          if (abortRef.current || !res) return;
+          setSearchList(extractList(res));
 
         } else {
-          // ── Recent page N (sequential + delay supaya tidak kena 429) ──
-          const res1 = await getRecent(page);
-          if (abortRef.current) return;
+          // ── Recent: sequential + delay 500ms antar request ──
+          const res1 = await fetchWithRetry(() => getRecent(page));
+          if (abortRef.current || !res1) return;
           const listPage1 = extractList(res1);
 
-          await wait(300);
+          await wait(500);
           if (abortRef.current) return;
 
-          const res2 = await getRecent(page + 1);
-          if (abortRef.current) return;
+          const res2 = await fetchWithRetry(() => getRecent(page + 1));
+          if (abortRef.current || !res2) return;
           const listPage2 = extractList(res2);
 
-          // Gabung + deduplikasi
           const combined = [...listPage1, ...listPage2].filter(
             (anime, idx, arr) =>
               arr.findIndex(
@@ -67,12 +78,12 @@ export default function Home() {
           setRecentList(combined);
           setShowAll(false);
 
-          // ── Popular: fetch sekali, simpan di cache selamanya ──
+          // ── Popular: fetch sekali, cache selamanya ──
           if (!popularCache.current) {
-            await wait(300);
+            await wait(500);
             if (abortRef.current) return;
-            const resPopular = await getPopularAnime(1);
-            if (abortRef.current) return;
+            const resPopular = await fetchWithRetry(() => getPopularAnime(1));
+            if (abortRef.current || !resPopular) return;
             const popList = extractList(resPopular);
             if (popList.length >= 3) {
               popularCache.current = [popList[1], popList[0], popList[2]];

@@ -73,7 +73,7 @@ export default function Watch() {
   const [embedBlocked,  setEmbedBlocked]  = useState(false);
   const [loading,       setLoading]       = useState(true);
   const [serverLoading, setServerLoading] = useState(false);
-  const [showEpList,    setShowEpList]    = useState(false);
+  const [epError,       setEpError]       = useState("");
 
   // ─── Load episode ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -84,6 +84,7 @@ export default function Watch() {
       setEmbedBlocked(false);
       setServers([]);
       setStreamData(null);
+      setEpError("");
 
       try {
         const res = await getEpisodeStream(episodeId);
@@ -99,6 +100,7 @@ export default function Watch() {
         }
       } catch (err) {
         console.error("[Watch] Error:", err);
+        setEpError("Gagal memuat episode. Coba refresh halaman.");
       }
       setLoading(false);
     };
@@ -129,16 +131,23 @@ export default function Watch() {
   // ─── Data turunan ─────────────────────────────────────────────────────────
   const animeId = streamData?.animeId;
 
-  // Ambil episode list dari recommendedEpisodeList atau fallback ke prev/next saja
-  // API sudah return recommendedEpisodeList berisi episode-episode terkait anime yang sama
   const episodeList = streamData?.recommendedEpisodeList || [];
 
-  // Urutkan berdasarkan nomor episode (dari judul, ekstrak angkanya)
-  const sortedEpList = [...episodeList].sort((a, b) => {
-    const numA = parseInt(a.title?.match(/\d+/)?.[0] ?? "0");
-    const numB = parseInt(b.title?.match(/\d+/)?.[0] ?? "0");
-    return numA - numB;
-  });
+  // ep.title dari API bisa berupa:
+  //   - number  : 3 (langsung nomor episode)
+  //   - string  : "Episode 3" atau "3"
+  // Ekstrak nomor dengan aman dari keduanya
+  const getEpNum = (ep) => {
+    const t = ep?.title;
+    if (typeof t === "number") return t;
+    if (typeof t === "string") {
+      const m = t.match(/\d+/);
+      return m ? parseInt(m[0]) : 0;
+    }
+    return 0;
+  };
+
+  const sortedEpList = [...episodeList].sort((a, b) => getEpNum(a) - getEpNum(b));
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -154,21 +163,16 @@ export default function Watch() {
           {animeId ? "Kembali ke Detail" : "Kembali"}
         </Link>
 
-        {/* Tombol toggle episode list */}
-        {sortedEpList.length > 0 && (
-          <button
-            onClick={() => setShowEpList((v) => !v)}
-            className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all border ${
-              showEpList
-                ? "bg-indigo-600 border-indigo-500 text-white"
-                : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800"
-            }`}
-          >
-            <List className="w-3.5 h-3.5" />
-            Daftar Episode
-          </button>
-        )}
+
       </div>
+
+      {/* ── ERROR BANNER ─────────────────────────────────────────────────── */}
+      {epError && (
+        <div className="mb-4 flex items-center gap-2 bg-red-950/60 border border-red-800/60 text-red-400 text-xs font-semibold px-4 py-3 rounded-xl">
+          <AlertTriangle className="w-4 h-4 shrink-0" />
+          {epError}
+        </div>
+      )}
 
       <h1 className="text-base sm:text-lg font-bold text-white mb-4 leading-snug">
         {streamData?.title || "Nonton Anime"}
@@ -231,8 +235,8 @@ export default function Watch() {
         </div>
       )}
 
-      {/* ── EPISODE LIST (collapsible) ────────────────────────────────────── */}
-      {showEpList && sortedEpList.length > 0 && (
+      {/* ── EPISODE LIST ──────────────────────────────────────────────────── */}
+      {sortedEpList.length > 0 && (
         <div className="mt-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
           <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
             <List className="w-3.5 h-3.5" />
@@ -244,8 +248,7 @@ export default function Watch() {
             {sortedEpList.map((ep, idx) => {
               const epId = ep?.episodeId || ep?.id || ep?.slug;
               const isActive = epId === episodeId;
-              // Ekstrak nomor episode dari judul
-              const epNum = ep.title?.match(/\d+/)?.[0] ?? idx + 1;
+              const epNum = getEpNum(ep) || idx + 1;
 
               return (
                 <button

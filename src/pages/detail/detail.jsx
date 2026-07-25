@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { getAnimeDetail } from "../../api/anime/api";
 import {
@@ -12,33 +12,41 @@ import {
   BookOpen,
 } from "lucide-react";
 
+const fixUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `https://${url}`;
+};
+
 export default function DetailAnime() {
   const { animeId } = useParams();
-  const [detail, setDetail] = useState(null);
-  const [raw, setRaw] = useState(null);
+  const [detail,  setDetail]  = useState(null);
   const [loading, setLoading] = useState(true);
+  const abortRef = useRef(false);
 
   useEffect(() => {
+    abortRef.current = false;
+
     const fetchDetail = async () => {
       setLoading(true);
+      setDetail(null);
       try {
         const res = await getAnimeDetail(animeId);
+        if (abortRef.current) return;
         const data = res?.data?.data || res?.data;
-        setRaw(data); // debug
         setDetail(data);
-        // DEBUG: lihat semua key yang tersedia
-        // console.log("[Detail] Keys:", Object.keys(data || {}));
-        // console.log("[Detail] Full data:", JSON.stringify(data, null, 2));
       } catch (err) {
-        console.error("[Detail] Gagal load:", err);
+        if (!abortRef.current) console.error("[Detail] Gagal load:", err);
       }
-      setLoading(false);
+      if (!abortRef.current) setLoading(false);
     };
+
     fetchDetail();
+    return () => { abortRef.current = true; };
   }, [animeId]);
 
   // ─── Poster: coba semua kemungkinan field name ──────────────────────────
-  const posterUrl =
+  const posterUrl = fixUrl(
     detail?.poster ||
     detail?.image ||
     detail?.thumbnail ||
@@ -46,7 +54,8 @@ export default function DetailAnime() {
     detail?.coverImage ||
     detail?.img ||
     detail?.imageUrl ||
-    null;
+    ''
+  ) || null;
 
   // ─── Title: title bisa string kosong "", fallback ke english lalu japanese
   const title =
@@ -245,12 +254,6 @@ export default function DetailAnime() {
             <p className="text-sm">
               Belum ada episode tersedia.
             </p>
-            {/* Debug info kalau episode list kosong */}
-            {raw && (
-              <p className="text-[10px] text-slate-700 max-w-sm text-center">
-                Keys tersedia: {Object.keys(raw).join(", ")}
-              </p>
-            )}
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">

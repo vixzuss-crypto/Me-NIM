@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Tv2, List, CalendarDays, Search, X, Menu } from 'lucide-react';
+import { Tv2, List, CalendarDays, X, Menu } from 'lucide-react';
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
