@@ -29,3 +29,6 @@ export const getEpisodeStream = (episodeId) => axios.get(`${BASE_URL}samehadaku/
 // 7. benerin
 export const getAnimeServer = (serverId) =>
   axios.get(`${BASE_URL}samehadaku/server/${serverId}`);
+
+// 8. Ambil jadwal rilis anime (Parameter: day / hari, misal: 'monday', 'tuesday', dll)
+export const getSchedule = (day) => axios.get(`${BASE_URL}samehadaku/schedule?day=${day}`);

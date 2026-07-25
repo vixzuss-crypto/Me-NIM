@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import { Play, ImageOff } from 'lucide-react';
+import { ImageOff } from 'lucide-react';
 
 // Pastikan URL selalu punya protocol (API kadang return tanpa https://)
 const fixUrl = (url) => {
@@ -73,12 +73,6 @@ export default function AnimeCard({ anime, isNew, rank }) {
             {anime.episodes} eps
           </span>
         )}
-
-        <div className="absolute inset-0 bg-indigo-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <div className="w-9 h-9 rounded-full bg-white/10 backdrop-blur flex items-center justify-center ring-1 ring-white/20">
-            <Play className="w-4 h-4 text-white fill-white translate-x-0.5" />
-          </div>
-        </div>
       </div>
 
       <div className="px-2 pt-2 pb-2.5">

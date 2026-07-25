@@ -31,6 +31,26 @@ function isEmbeddable(url = "") {
   catch { return false; }
 }
 
+// ─── Ambil ID episode dari `href` ────────────────────────────────────────────
+// PENTING: field `episodeId` dari API ini KE-BUG — nilainya selalu sama
+// dengan episode yang lagi aktif/ditonton, bukan episode masing-masing item.
+// Field `href` (contoh: "/samehadaku/episode/xxx-episode-11") justru BENAR
+// per-episode, jadi kita ambil segment terakhir dari situ sebagai ID asli.
+function getEpId(ep) {
+  const href = ep?.href || ep?.samehadakuUrl || "";
+  if (!href) return null;
+  try {
+    // href bisa berupa path relatif ("/samehadaku/episode/xxx") atau full URL
+    // (samehadakuUrl: "https://v2.samehadaku.how/xxx/") — keduanya ditangani.
+    const path = href.includes("://") ? new URL(href).pathname : href;
+    const segments = path.split("/").filter(Boolean);
+    return segments[segments.length - 1] || null;
+  } catch {
+    const segments = href.split("/").filter(Boolean);
+    return segments[segments.length - 1] || null;
+  }
+}
+
 // ─── Flatten data.server.qualities ───────────────────────────────────────────
 function flattenServers(data) {
   const qualities = data?.server?.qualities;
@@ -133,10 +153,6 @@ export default function Watch() {
 
   const episodeList = streamData?.recommendedEpisodeList || [];
 
-  // ep.title dari API bisa berupa:
-  //   - number  : 3 (langsung nomor episode)
-  //   - string  : "Episode 3" atau "3"
-  // Ekstrak nomor dengan aman dari keduanya
   const getEpNum = (ep) => {
     const t = ep?.title;
     if (typeof t === "number") return t;
@@ -162,8 +178,6 @@ export default function Watch() {
           <ArrowLeft className="w-3.5 h-3.5" />
           {animeId ? "Kembali ke Detail" : "Kembali"}
         </Link>
-
-
       </div>
 
       {/* ── ERROR BANNER ─────────────────────────────────────────────────── */}
@@ -246,15 +260,16 @@ export default function Watch() {
             [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-slate-800
             [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-thumb]:rounded-full">
             {sortedEpList.map((ep, idx) => {
-              const epId = ep?.episodeId || ep?.id || ep?.slug;
-              const isActive = epId === episodeId;
+              const epId = getEpId(ep);
+              const isActive = !!epId && epId === episodeId;
               const epNum = getEpNum(ep) || idx + 1;
 
               return (
                 <button
                   key={idx}
                   onClick={() => {
-                    if (!isActive && epId) navigate(`/watch/${epId}`);
+                    if (isActive || !epId) return;
+                    navigate(`/watch/${epId}`);
                   }}
                   disabled={isActive}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
