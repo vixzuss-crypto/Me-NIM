@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { getEpisodeStream, getAnimeServer } from "../../api/anime/api";
+import { getEpisodeStream, getAnimeServer, getAnimeDetail } from "../../api/anime/api";
 import {
   ArrowLeft,
   Lock,
@@ -21,26 +21,6 @@ const BLOCKED_DOMAINS = [
 function isBlocked(url = "") {
   try { return BLOCKED_DOMAINS.some((d) => new URL(url).hostname.includes(d)); }
   catch { return false; }
-}
-
-// ─── Ambil ID episode dari `href` ────────────────────────────────────────────
-// PENTING: field `episodeId` dari API ini KE-BUG — nilainya selalu sama
-// dengan episode yang lagi aktif/ditonton, bukan episode masing-masing item.
-// Field `href` (contoh: "/samehadaku/episode/xxx-episode-11") justru BENAR
-// per-episode, jadi kita ambil segment terakhir dari situ sebagai ID asli.
-function getEpId(ep) {
-  const href = ep?.href || ep?.samehadakuUrl || "";
-  if (!href) return null;
-  try {
-    // href bisa berupa path relatif ("/samehadaku/episode/xxx") atau full URL
-    // (samehadakuUrl: "https://v2.samehadaku.how/xxx/") — keduanya ditangani.
-    const path = href.includes("://") ? new URL(href).pathname : href;
-    const segments = path.split("/").filter(Boolean);
-    return segments[segments.length - 1] || null;
-  } catch {
-    const segments = href.split("/").filter(Boolean);
-    return segments[segments.length - 1] || null;
-  }
 }
 
 // ─── Flatten data.server.qualities ───────────────────────────────────────────
@@ -80,6 +60,7 @@ export default function Watch() {
 
   const [streamData,    setStreamData]    = useState(null);
   const [servers,       setServers]       = useState([]);
+  const [episodeList,   setEpisodeList]   = useState([]);  // dari getAnimeDetail
   const [iframeUrl,     setIframeUrl]     = useState("");
   const [selectedIdx,   setSelectedIdx]   = useState(null);
   const [embedBlocked,  setEmbedBlocked]  = useState(false);
@@ -109,9 +90,10 @@ export default function Watch() {
     setServerLoading(false);
   };
 
-  // ─── Load episode ─────────────────────────────────────────────────────────
+  // ─── Load episode stream + detail anime untuk episode list ────────────────
   useEffect(() => {
     abortRef.current = false;
+
     const init = async () => {
       setLoading(true);
       setIframeUrl("");
@@ -119,9 +101,11 @@ export default function Watch() {
       setEmbedBlocked(false);
       setServers([]);
       setStreamData(null);
+      setEpisodeList([]);
       setEpError("");
 
       try {
+        // Step 1 — stream data (server, judul, animeId)
         const res = await getEpisodeStream(episodeId);
         if (abortRef.current) return;
         const data = res?.data?.data || res?.data;
@@ -134,6 +118,38 @@ export default function Watch() {
         } else {
           if (!abortRef.current) resolveUrl(data?.defaultStreamingUrl || data?.url || "");
         }
+
+        // Step 2 — ambil episode list dari detail anime (bukan recommendedEpisodeList
+        //           yang buggy — field episodeId & title-nya selalu ikut episode aktif)
+        const animeId =
+          data?.animeId ||
+          data?.anime_id ||
+          data?.anime?.animeId ||
+          data?.anime?.id;
+
+        if (animeId && !abortRef.current) {
+          try {
+            const detailRes = await getAnimeDetail(animeId);
+            if (abortRef.current) return;
+            const detail = detailRes?.data?.data || detailRes?.data;
+            const epList =
+              detail?.episodeList ||
+              detail?.episodes    ||
+              detail?.episodesList ||
+              detail?.episode_list ||
+              detail?.listEpisode  ||
+              detail?.eps          ||
+              [];
+            // Urutkan ascending (ep 1 → ep terakhir)
+            const sorted = [...epList].sort((a, b) => {
+              const numA = Number(a?.title ?? a?.name ?? a?.episode ?? 0);
+              const numB = Number(b?.title ?? b?.name ?? b?.episode ?? 0);
+              return numA - numB;
+            });
+            if (!abortRef.current) setEpisodeList(sorted);
+          } catch (_) { /* detail gagal → episode list tetap kosong */ }
+        }
+
       } catch (err) {
         if (!abortRef.current) {
           console.error("[Watch] Error:", err);
@@ -147,23 +163,8 @@ export default function Watch() {
     return () => { abortRef.current = true; };
   }, [episodeId]);
 
-
   // ─── Data turunan ─────────────────────────────────────────────────────────
-  const animeId = streamData?.animeId;
-
-  const episodeList = streamData?.recommendedEpisodeList || [];
-
-  const getEpNum = (ep) => {
-    const t = ep?.title;
-    if (typeof t === "number") return t;
-    if (typeof t === "string") {
-      const m = t.match(/\d+/);
-      return m ? parseInt(m[0]) : 0;
-    }
-    return 0;
-  };
-
-  const sortedEpList = [...episodeList].sort((a, b) => getEpNum(a) - getEpNum(b));
+  const animeId = streamData?.animeId || streamData?.anime_id || streamData?.anime?.animeId;
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -249,8 +250,8 @@ export default function Watch() {
         </div>
       )}
 
-      {/* ── EPISODE LIST ──────────────────────────────────────────────────── */}
-      {sortedEpList.length > 0 && (
+      {/* ── EPISODE LIST — dari getAnimeDetail (bukan recommendedEpisodeList) */}
+      {episodeList.length > 0 && (
         <div className="mt-4 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
           <h3 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider flex items-center gap-1.5">
             <List className="w-3.5 h-3.5" />
@@ -259,14 +260,22 @@ export default function Watch() {
           <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1
             [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-slate-800
             [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-thumb]:rounded-full">
-            {sortedEpList.map((ep, idx) => {
-              const epId = getEpId(ep);
+            {episodeList.map((ep, idx) => {
+              const epId =
+                ep?.episodeId ||
+                ep?.id        ||
+                ep?.slug      ||
+                ep?.endpoint  ||
+                ep?.episode_id;
+
+              const rawNum = ep?.title ?? ep?.name ?? ep?.episode ?? null;
+              const epNum  = rawNum !== null && rawNum !== "" ? rawNum : idx + 1;
+
               const isActive = !!epId && epId === episodeId;
-              const epNum = getEpNum(ep) || idx + 1;
 
               return (
                 <button
-                  key={idx}
+                  key={epId || idx}
                   onClick={() => {
                     if (isActive || !epId) return;
                     navigate(`/watch/${epId}`);
