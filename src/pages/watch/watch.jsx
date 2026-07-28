@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { getEpisodeStream, getAnimeServer } from "../../api/anime/api";
 import {
@@ -18,16 +18,8 @@ const BLOCKED_DOMAINS = [
   "filedon.co", "netu.tv", "desustream.com", "vidstream.io",
   "kwik.si", "samehadaku.care", "rplayer.co", "streamlare.com",
 ];
-const EMBEDDABLE_DOMAINS = [
-  "blogger.com", "blogspot.com", "googlevideo.com", "drive.google.com",
-];
-
 function isBlocked(url = "") {
   try { return BLOCKED_DOMAINS.some((d) => new URL(url).hostname.includes(d)); }
-  catch { return false; }
-}
-function isEmbeddable(url = "") {
-  try { return EMBEDDABLE_DOMAINS.some((d) => new URL(url).hostname.includes(d)); }
   catch { return false; }
 }
 
@@ -94,38 +86,12 @@ export default function Watch() {
   const [loading,       setLoading]       = useState(true);
   const [serverLoading, setServerLoading] = useState(false);
   const [epError,       setEpError]       = useState("");
+  const abortRef = useRef(false);
 
-  // ─── Load episode ─────────────────────────────────────────────────────────
-  useEffect(() => {
-    const init = async () => {
-      setLoading(true);
-      setIframeUrl("");
-      setSelectedIdx(null);
-      setEmbedBlocked(false);
-      setServers([]);
-      setStreamData(null);
-      setEpError("");
-
-      try {
-        const res = await getEpisodeStream(episodeId);
-        const data = res?.data?.data || res?.data;
-        setStreamData(data);
-
-        const flat = flattenServers(data);
-        if (flat.length > 0) {
-          setServers(flat);
-          await loadServer(flat, pickBestIndex(flat));
-        } else {
-          resolveUrl(data?.defaultStreamingUrl || data?.url || "");
-        }
-      } catch (err) {
-        console.error("[Watch] Error:", err);
-        setEpError("Gagal memuat episode. Coba refresh halaman.");
-      }
-      setLoading(false);
-    };
-    init();
-  }, [episodeId]);
+  const resolveUrl = (url) => {
+    setIframeUrl(url);
+    setEmbedBlocked(!!url && isBlocked(url));
+  };
 
   const loadServer = async (serverList, idx) => {
     const srv = serverList[idx];
@@ -143,10 +109,44 @@ export default function Watch() {
     setServerLoading(false);
   };
 
-  const resolveUrl = (url) => {
-    setIframeUrl(url);
-    setEmbedBlocked(!!url && isBlocked(url));
-  };
+  // ─── Load episode ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    abortRef.current = false;
+    const init = async () => {
+      setLoading(true);
+      setIframeUrl("");
+      setSelectedIdx(null);
+      setEmbedBlocked(false);
+      setServers([]);
+      setStreamData(null);
+      setEpError("");
+
+      try {
+        const res = await getEpisodeStream(episodeId);
+        if (abortRef.current) return;
+        const data = res?.data?.data || res?.data;
+        setStreamData(data);
+
+        const flat = flattenServers(data);
+        if (flat.length > 0) {
+          setServers(flat);
+          if (!abortRef.current) await loadServer(flat, pickBestIndex(flat));
+        } else {
+          if (!abortRef.current) resolveUrl(data?.defaultStreamingUrl || data?.url || "");
+        }
+      } catch (err) {
+        if (!abortRef.current) {
+          console.error("[Watch] Error:", err);
+          setEpError("Gagal memuat episode. Coba refresh halaman.");
+        }
+      }
+      if (!abortRef.current) setLoading(false);
+    };
+
+    init();
+    return () => { abortRef.current = true; };
+  }, [episodeId]);
+
 
   // ─── Data turunan ─────────────────────────────────────────────────────────
   const animeId = streamData?.animeId;

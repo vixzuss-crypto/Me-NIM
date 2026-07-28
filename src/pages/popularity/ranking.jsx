@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Trophy } from 'lucide-react';
 import { getPopularAnime } from '../../api/anime/api';
 import AnimeCard from '../../components/AnimeCard';
-import Footer    from '../../components/Footer';
 
 export default function Ranking() {
   const [popularList, setPopularList] = useState([]);
@@ -92,8 +91,6 @@ export default function Ranking() {
           </div>
         </>
       )}
-
-      <Footer />
     </main>
   );
 }

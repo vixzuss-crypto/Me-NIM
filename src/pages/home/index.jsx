@@ -1,12 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Search, X, ChevronLeft, ChevronRight, Flame, ChevronDown } from 'lucide-react';
-import { getRecent, getPopularAnime, searchAnime } from '../../api/anime/api';
+import { home, getRecent, getPopularAnime, searchAnime, getSchedule, getAnimeDetail } from '../../api/anime/api';
 import Top3all   from '../../components/Top3all';
 import AnimeCard from '../../components/AnimeCard';
 import Carousel  from '../../components/Carousel';
-import Footer    from '../../components/Footer';
 
 const INITIAL_COUNT = 15;
+
+const fixUrl = (url) => {
+  if (!url) return '';
+  if (url.startsWith('http')) return url;
+  return `https://${url}`;
+};
 
 export default function Home() {
   const [recentList,   setRecentList]   = useState([]);
@@ -16,15 +21,18 @@ export default function Home() {
   const [searchQuery,  setSearchQuery]  = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [page,         setPage]         = useState(1);
-  const [showAll,      setShowAll]      = useState(false); // false=15 card, true=30 card
+  const [showAll,      setShowAll]      = useState(false);
 
-  const sectionRef   = useRef(null);  // ref ke section "Update Terbaru"
-  const popularCache = useRef(null);  // cache popular, fetch sekali saja
-  const abortRef     = useRef(false); // flag abort untuk StrictMode double-invoke
+  const sectionRef        = useRef(null);
+  const popularCache      = useRef(null);
+  const coverMapRef       = useRef({});     // schedule: animeId → poster
+  const detailMapRef      = useRef({});     // detail API: animeId → poster
+  const schedulePromise   = useRef(null);   // Promise tunggal agar schedule hanya difetch sekali
+  const abortRef          = useRef(false);
 
   // ─── Fetch ────────────────────────────────────────────────────────────────
   useEffect(() => {
-    abortRef.current = false; // reset tiap effect baru
+    abortRef.current = false;
 
     const extractList = (res) => {
       if (!res?.data?.data) return [];
@@ -34,7 +42,6 @@ export default function Home() {
     };
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // Fetch dengan retry sekali kalau kena 429
     const fetchWithRetry = async (fn, retryDelay = 1000) => {
       try {
         return await fn();
@@ -48,6 +55,68 @@ export default function Home() {
       }
     };
 
+    // ── Pastikan schedule sudah di-fetch (satu kali, hasil di-cache di Promise) ──
+    const ensureSchedule = () => {
+      if (!schedulePromise.current) {
+        schedulePromise.current = (async () => {
+          try {
+            const resSched = await fetchWithRetry(() => getSchedule());
+            if (resSched?.data?.data?.days) {
+              for (const day of resSched.data.data.days) {
+                for (const anime of (day.animeList || [])) {
+                  if (anime.animeId && anime.poster) {
+                    coverMapRef.current[anime.animeId] = fixUrl(anime.poster);
+                  }
+                }
+              }
+            }
+          } catch (_) { /* schedule gagal → coverMapRef tetap apa adanya */ }
+        })();
+      }
+      return schedulePromise.current; // selalu return Promise yang sama
+    };
+
+    // ── Fetch detail poster untuk animeId yang tidak ada di schedule/detail cache ──
+    // Prioritas: detailMapRef > coverMapRef > poster dari home/recent
+    const fetchMissingDetails = async (list, limit = 8) => {
+      const missingIds = list
+        .filter(
+          (a) =>
+            a.animeId &&
+            !detailMapRef.current[a.animeId] &&
+            !coverMapRef.current[a.animeId]
+        )
+        .map((a) => a.animeId)
+        .slice(0, limit);
+
+      for (const id of missingIds) {
+        if (abortRef.current) break;
+        try {
+          const res = await fetchWithRetry(() => getAnimeDetail(id));
+          if (abortRef.current) break;
+          const data = res?.data?.data || res?.data;
+          const poster =
+            data?.poster || data?.image || data?.cover || data?.thumbnail;
+          if (poster) detailMapRef.current[id] = fixUrl(poster);
+          await wait(300);
+        } catch (_) { /* skip */ }
+      }
+    };
+
+    // ── Merge poster: detail > schedule > home/recent poster > null ──
+    // Dipanggil SETELAH semua sumber sudah terisi
+    const applyPosterCache = (list) =>
+      list.map((anime) => ({
+        ...anime,
+        poster:
+          fixUrl(
+            detailMapRef.current[anime.animeId] ||
+            coverMapRef.current[anime.animeId]  ||
+            anime.poster ||
+            ''
+          ) || null,
+      }));
+
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -57,24 +126,52 @@ export default function Home() {
           setSearchList(extractList(res));
 
         } else {
-          // ── Recent: sequential + delay 500ms antar request ──
-          const res1 = await fetchWithRetry(() => getRecent(page));
-          if (abortRef.current || !res1) return;
-          const listPage1 = extractList(res1);
+          let listPage1 = [];
 
-          await wait(500);
+          if (page === 1) {
+            // Step 1 — home() → recent list (poster masih episode thumbnail)
+            const resHome = await fetchWithRetry(() => home());
+            if (abortRef.current || !resHome) return;
+            listPage1 =
+              resHome?.data?.data?.recent?.animeList || extractList(resHome);
+          } else {
+            const res1 = await fetchWithRetry(() => getRecent(page));
+            if (abortRef.current || !res1) return;
+            listPage1 = extractList(res1);
+          }
+
+          // Step 2 — schedule (dijalankan paralel dengan Step 3 & 4)
+          //           ensureSchedule() return Promise yang sama kalau sudah jalan,
+          //           jadi aman dipanggil berkali-kali tanpa double-fetch.
+          const scheduleTask = ensureSchedule();
+
+          // Step 4 — getRecent(page+1) → listPage2  (paralel dengan schedule)
+          await wait(300);
           if (abortRef.current) return;
-
           const res2 = await fetchWithRetry(() => getRecent(page + 1));
           if (abortRef.current || !res2) return;
           const listPage2 = extractList(res2);
 
-          const combined = [...listPage1, ...listPage2].filter(
+          // Tunggu schedule selesai sebelum lanjut ke detail fetch
+          await scheduleTask;
+          if (abortRef.current) return;
+
+          // Step 3 — detail fetch untuk anime yang masih belum punya poster
+          //           dari schedule (cek kedua list sekaligus)
+          const allCards = [...listPage1, ...listPage2].filter(
             (anime, idx, arr) =>
               arr.findIndex(
-                (a) => (a.animeId || a.slug || a.id) === (anime.animeId || anime.slug || anime.id)
+                (a) =>
+                  (a.animeId || a.slug || a.id) ===
+                  (anime.animeId || anime.slug || anime.id)
               ) === idx
           );
+
+          await fetchMissingDetails(allCards, 8);
+          if (abortRef.current) return;
+
+          // Step 5 — applyPosterCache setelah SEMUA sumber siap
+          const combined = applyPosterCache(allCards);
           setRecentList(combined);
           setShowAll(false);
 
@@ -101,7 +198,6 @@ export default function Home() {
 
     fetchData();
 
-    // Cleanup: batalkan fetch kalau deps berubah atau StrictMode re-invoke
     return () => { abortRef.current = true; };
   }, [page, activeSearch]);
 
@@ -118,22 +214,18 @@ export default function Home() {
     setPage(1);
   };
 
-  // Ganti halaman + scroll ke section, bukan ke atas halaman
   const changePage = (next) => {
     setPage(next);
     setShowAll(false);
-    // Scroll ke section "Update Terbaru" dengan sedikit offset
     setTimeout(() => {
       sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   };
 
-  // Page 1: default 15, show more ke 30
-  // Page 2+: langsung tampil semua (sudah fetch 2 halaman = 30+ card)
-  const visibleList = (page === 1 && !showAll)
-    ? recentList.slice(0, INITIAL_COUNT)
-    : recentList;
-  const hasMore = page === 1 && !showAll && recentList.length > INITIAL_COUNT;
+  const visibleList =
+    page === 1 && !showAll ? recentList.slice(0, INITIAL_COUNT) : recentList;
+  const hasMore =
+    page === 1 && !showAll && recentList.length > INITIAL_COUNT;
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -255,7 +347,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Pagination — page 1: muncul setelah show more. Page 2+: selalu tampil */}
+            {/* Pagination */}
             {(page > 1 || showAll || recentList.length <= INITIAL_COUNT) && (
               <div className="flex items-center justify-center gap-2 mt-6">
                 <button
@@ -283,8 +375,6 @@ export default function Home() {
 
         </div>
       )}
-
-      <Footer />
     </main>
   );
 }
