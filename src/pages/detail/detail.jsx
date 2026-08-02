@@ -1,291 +1,237 @@
-import { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
-import { getAnimeDetail } from "../../api/anime/api";
+import { useEffect, useRef, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import {
-  ArrowLeft,
-  Clapperboard,
-  Star,
-  Calendar,
-  Tv,
-  Tag,
-  PlayCircle,
-  BookOpen,
-} from "lucide-react";
+  ArrowLeft, Star, Tv2, CalendarDays, Clock3,
+  Layers, Package, ChevronRight, Play, BookOpen,
+} from 'lucide-react';
+import { getAnimeDetail } from '../../api/anime/api';
+import { fixUrl, fetchWithRetry } from '../../lib/utils';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import ErrorBanner    from '../../components/ErrorBanner';
 
-const fixUrl = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `https://${url}`;
-};
+function Pill({ children, color = 'slate' }) {
+  const cls = {
+    indigo: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+    slate:  'bg-slate-800/60 text-slate-400 border-slate-700/40',
+    amber:  'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    green:  'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+  }[color];
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-semibold border ${cls}`}>
+      {children}
+    </span>
+  );
+}
 
-export default function DetailAnime() {
+export default function Detail() {
   const { animeId } = useParams();
   const [detail,  setDetail]  = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
+  const [showFull, setShowFull] = useState(false);
   const abortRef = useRef(false);
 
   useEffect(() => {
     abortRef.current = false;
+    setLoading(true);
+    setError('');
+    setDetail(null);
+    setShowFull(false);
 
-    const fetchDetail = async () => {
-      setLoading(true);
-      setDetail(null);
+    (async () => {
       try {
-        const res = await getAnimeDetail(animeId);
+        const res = await fetchWithRetry(() => getAnimeDetail(animeId));
         if (abortRef.current) return;
-        const data = res?.data?.data || res?.data;
-        setDetail(data);
+        setDetail(res?.data?.data || res?.data);
       } catch (err) {
-        if (!abortRef.current) console.error("[Detail] Gagal load:", err);
+        if (!abortRef.current) setError('Gagal memuat detail anime. Coba refresh halaman.');
+      } finally {
+        if (!abortRef.current) setLoading(false);
       }
-      if (!abortRef.current) setLoading(false);
-    };
+    })();
 
-    fetchDetail();
     return () => { abortRef.current = true; };
   }, [animeId]);
 
-  // ─── Poster: coba semua kemungkinan field name ──────────────────────────
-  const posterUrl = fixUrl(
-    detail?.poster ||
-    detail?.image ||
-    detail?.thumbnail ||
-    detail?.cover ||
-    detail?.coverImage ||
-    detail?.img ||
-    detail?.imageUrl ||
-    ''
-  ) || null;
+  if (loading) return <main className="max-w-5xl mx-auto px-4 py-6"><LoadingSpinner fullPage /></main>;
 
-  // ─── Title: title bisa string kosong "", fallback ke english lalu japanese
-  const title =
-    (detail?.title && detail.title.trim() !== "" ? detail.title : null) ||
-    detail?.english ||
-    detail?.japanese ||
-    detail?.name ||
-    detail?.animeName ||
-    "Judul tidak tersedia";
+  const poster   = fixUrl(detail?.poster || detail?.image || '');
+  const score    = detail?.score?.value ?? detail?.score ?? null;
+  const synopsis = detail?.synopsis?.paragraphs?.join('\n\n') || detail?.synopsis || '';
+  const episodes = (detail?.episodeList || []).slice().reverse(); // ep 1 first
+  const genres   = detail?.genreList   || [];
+  const batches  = detail?.batchList   || [];
 
-  // ─── Synopsis ────────────────────────────────────────────────────────────
-  const renderSynopsis = () => {
-    const syn =
-      detail?.synopsis ||
-      detail?.description ||
-      detail?.desc ||
-      detail?.overview ||
-      detail?.sinopsis;
-
-    if (!syn) return <p className="italic">Tidak ada sinopsis.</p>;
-    if (typeof syn === "string") return <p>{syn}</p>;
-
-    if (typeof syn === "object") {
-      const paragraphs = syn?.paragraphs || syn?.text || syn?.content;
-      if (Array.isArray(paragraphs) && paragraphs.length > 0) {
-        return paragraphs.map((p, i) => (
-          <p key={i}>{typeof p === "string" ? p : JSON.stringify(p)}</p>
-        ));
-      }
-      // Kalau object tapi tidak ada paragraphs, coba toString
-      const str = syn?.paragraphs?.[0] || JSON.stringify(syn);
-      if (str) return <p>{str}</p>;
-    }
-
-    return <p className="italic">Tidak ada sinopsis.</p>;
-  };
-
-  // ─── Episode list: coba semua kemungkinan field name ────────────────────
-  const episodeList =
-    detail?.episodeList ||
-    detail?.episodes ||
-    detail?.episodesList ||
-    detail?.episode_list ||
-    detail?.listEpisode ||
-    detail?.eps ||
-    [];
-
-  // ─── Genre list ──────────────────────────────────────────────────────────
-  const genreList =
-    detail?.genreList ||
-    detail?.genres ||
-    detail?.genre ||
-    [];
-
-  // ─── Info metadata ────────────────────────────────────────────────────────
-  // score bisa berupa string "8.5" atau object { value: "6.73", users: "4,380" }
-  const rawScore = detail?.score || detail?.rating || detail?.mal_score || null;
-  const scoreValue = rawScore
-    ? (typeof rawScore === "object" ? rawScore?.value : rawScore)
-    : null;
-  const scoreUsers = typeof rawScore === "object" ? rawScore?.users : null;
-
-  const status  = detail?.status || detail?.airing || null;
-  const type    = detail?.type || detail?.animeType || null;
-  const aired   = detail?.aired || detail?.releaseDate || detail?.releasedOn || null;
-  const studio  = detail?.studios || detail?.studio || detail?.producer || null;
-  const season  = detail?.season || null;
-  const duration = detail?.duration || null;
-
-  // ─────────────────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800" />
-      </div>
-    );
-  }
-
-  if (!detail) {
-    return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-3 text-slate-400">
-        <Tv className="w-10 h-10 text-slate-600" />
-        <p className="text-sm">Data anime tidak ditemukan.</p>
-        <Link to="/" className="text-xs text-indigo-400 hover:underline">← Kembali ke Beranda</Link>
-      </div>
-    );
-  }
+  const statusColor = {
+    'Ongoing':   'green',
+    'Completed': 'indigo',
+  }[detail?.status] ?? 'slate';
 
   return (
-    <main className="w-full max-w-6xl mx-auto px-4 py-8">
-      {/* Tombol kembali */}
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors mb-6"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        Kembali ke Beranda
+    <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
+      <Link to="/"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-400
+          hover:text-indigo-300 transition-colors mb-6">
+        <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Beranda
       </Link>
 
-      {/* ── HEADER ──────────────────────────────────────────────────────── */}
-      <div className="flex flex-col md:flex-row gap-6 bg-slate-900/60 p-6 rounded-2xl border border-slate-800/80 backdrop-blur">
+      <ErrorBanner message={error} />
 
-        {/* Poster */}
-        <div className="shrink-0">
-          {posterUrl ? (
-            <img
-              src={posterUrl}
-              alt={title}
-              className="w-full md:w-52 h-72 object-cover rounded-xl shadow-lg"
-              onError={(e) => { e.target.style.display = "none"; }}
-            />
-          ) : (
-            <div className="w-full md:w-52 h-72 bg-slate-800 rounded-xl flex items-center justify-center">
-              <Tv className="w-10 h-10 text-slate-600" />
+      {detail && (
+        <div className="space-y-6">
+
+          {/* ── HERO ──────────────────────────────────────────────────────── */}
+          <div className="relative rounded-2xl overflow-hidden border border-slate-800/60
+            bg-slate-900/60 p-5 sm:p-6">
+            {/* BG blur */}
+            {poster && (
+              <img src={poster} alt="" aria-hidden
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-10 pointer-events-none" />
+            )}
+
+            <div className="relative flex gap-5 sm:gap-8">
+              {/* Poster */}
+              <div className="shrink-0 w-28 sm:w-40 aspect-[3/4] rounded-xl overflow-hidden
+                border border-slate-700/60 shadow-2xl shadow-black/60">
+                {poster
+                  ? <img src={poster} alt={detail?.title} className="w-full h-full object-cover" />
+                  : <div className="w-full h-full bg-slate-800 flex items-center justify-center">
+                      <Tv2 className="w-8 h-8 text-slate-600" />
+                    </div>
+                }
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0 py-1">
+                <h1 className="text-xl sm:text-2xl font-black text-white leading-tight mb-1">
+                  {detail?.title}
+                </h1>
+                {detail?.japanese && (
+                  <p className="text-xs text-slate-500 mb-3">{detail.japanese}</p>
+                )}
+
+                {/* Meta pills */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {score && (
+                    <Pill color="amber">
+                      <Star className="w-2.5 h-2.5 fill-amber-400 mr-1" />
+                      {typeof score === 'number' ? score.toFixed(2) : score}
+                      {detail?.score?.users && (
+                        <span className="ml-1 opacity-60">
+                          ({Number(detail.score.users).toLocaleString()})
+                        </span>
+                      )}
+                    </Pill>
+                  )}
+                  {detail?.status  && <Pill color={statusColor}>{detail.status}</Pill>}
+                  {detail?.type    && <Pill>{detail.type}</Pill>}
+                  {detail?.source  && <Pill>{detail.source}</Pill>}
+                </div>
+
+                {/* Detail grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 text-xs">
+                  {[
+                    { icon: CalendarDays, label: 'Tayang',  val: detail?.aired    },
+                    { icon: Clock3,       label: 'Durasi',  val: detail?.duration },
+                    { icon: Tv2,          label: 'Studio',  val: detail?.studios  },
+                    { icon: Layers,       label: 'Season',  val: detail?.season   },
+                    { icon: BookOpen,     label: 'Episode', val: detail?.episodes ?? (detail?.episodeList?.length ? `${detail.episodeList.length} ep` : null) },
+                  ].filter((r) => r.val).map(({ icon: Icon, label, val }) => (
+                    <div key={label} className="flex items-start gap-2 text-slate-400">
+                      <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-slate-600" />
+                      <span className="text-slate-600 shrink-0">{label}:</span>
+                      <span className="text-slate-300 line-clamp-1">{val}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Genres */}
+                {genres.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-4">
+                    {genres.map((g) => (
+                      <Link key={g.genreId} to={`/genres/${g.genreId}`}>
+                        <Pill color="indigo">{g.title}</Pill>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-
-        {/* Info */}
-        <div className="flex flex-col gap-4 flex-1 min-w-0">
-          <h1 className="text-2xl font-black text-white leading-tight">{title}</h1>
-
-          {/* Metadata badges */}
-          <div className="flex flex-wrap gap-2">
-            {scoreValue && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-yellow-500/10 text-yellow-400 border border-yellow-500/20 px-2.5 py-1 rounded-lg">
-                <Star className="w-3 h-3" />
-                {scoreValue}
-                {scoreUsers && <span className="text-yellow-600 font-normal">({scoreUsers})</span>}
-              </span>
-            )}
-            {status && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-lg">
-                <Tv className="w-3 h-3" /> {status}
-              </span>
-            )}
-            {type && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2.5 py-1 rounded-lg">
-                <Clapperboard className="w-3 h-3" /> {type}
-              </span>
-            )}
-            {aired && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-700/60 text-slate-400 border border-slate-700 px-2.5 py-1 rounded-lg">
-                <Calendar className="w-3 h-3" /> {aired}
-              </span>
-            )}
-            {season && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-700/60 text-slate-400 border border-slate-700 px-2.5 py-1 rounded-lg">
-                <Calendar className="w-3 h-3" /> {season}
-              </span>
-            )}
-            {studio && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-slate-700/60 text-slate-400 border border-slate-700 px-2.5 py-1 rounded-lg">
-                <Tv className="w-3 h-3" /> {studio}
-              </span>
-            )}
           </div>
 
-          {/* Genre */}
-          {Array.isArray(genreList) && genreList.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {genreList.map((g, i) => (
-                <span key={i} className="inline-flex items-center gap-1 text-[10px] font-medium bg-slate-800 text-slate-400 px-2 py-0.5 rounded-md">
-                  <Tag className="w-2.5 h-2.5" />
-                  {g?.title || g?.name || g}
+          {/* ── SINOPSIS ──────────────────────────────────────────────────── */}
+          {synopsis && (
+            <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5" /> Sinopsis
+              </h3>
+              <div className={`text-sm text-slate-300 leading-relaxed whitespace-pre-line ${!showFull ? 'line-clamp-4' : ''}`}>
+                {synopsis}
+              </div>
+              {synopsis.length > 200 && (
+                <button onClick={() => setShowFull((v) => !v)}
+                  className="mt-2 text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-semibold">
+                  {showFull ? 'Sembunyikan ↑' : 'Selengkapnya ↓'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* ── EPISODE LIST ──────────────────────────────────────────────── */}
+          {episodes.length > 0 && (
+            <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Play className="w-3.5 h-3.5" /> Daftar Episode
+                <span className="ml-auto text-slate-700 font-normal normal-case tracking-normal">
+                  {episodes.length} episode
                 </span>
-              ))}
+              </h3>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2
+                max-h-56 overflow-y-auto pr-1
+                [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-slate-800
+                [&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-thumb]:rounded-full">
+                {episodes.map((ep, i) => (
+                  <Link
+                    key={ep.episodeId || i}
+                    to={`/watch/${ep.episodeId}`}
+                    className="flex items-center justify-center px-2 py-2 rounded-xl text-xs font-semibold
+                      bg-slate-800 text-slate-300 hover:bg-indigo-600 hover:text-white
+                      transition-all border border-slate-700/40 hover:border-indigo-500/60
+                      hover:shadow-md hover:shadow-indigo-500/20"
+                  >
+                    {ep.title ?? i + 1}
+                  </Link>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Sinopsis */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              <BookOpen className="w-3 h-3" /> Sinopsis
+          {/* ── BATCH ─────────────────────────────────────────────────────── */}
+          {batches.length > 0 && (
+            <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5">
+              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                <Package className="w-3.5 h-3.5" /> Download Batch
+              </h3>
+              <div className="flex flex-col gap-2">
+                {batches.map((b, i) => (
+                  <Link
+                    key={b.batchId || i}
+                    to={`/batch/${b.batchId}`}
+                    className="flex items-center justify-between px-4 py-3 rounded-xl
+                      bg-slate-800/60 hover:bg-slate-800 border border-slate-700/40
+                      hover:border-indigo-500/30 transition-all group"
+                  >
+                    <span className="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors line-clamp-1">
+                      {b.title}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-400 shrink-0 transition-colors" />
+                  </Link>
+                ))}
+              </div>
             </div>
-            <div className="text-xs text-slate-400 leading-relaxed space-y-2">
-              {renderSynopsis()}
-            </div>
-          </div>
+          )}
         </div>
-      </div>
-
-      {/* ── DAFTAR EPISODE ───────────────────────────────────────────────── */}
-      <div className="mt-10">
-        <h2 className="text-base font-bold text-white mb-4 flex items-center gap-2">
-          <Clapperboard className="w-5 h-5 text-indigo-400" />
-          Daftar Episode
-          {episodeList.length > 0 && (
-            <span className="text-xs font-normal text-slate-500">({episodeList.length} episode)</span>
-          )}
-        </h2>
-
-        {episodeList.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-3 text-slate-600 bg-slate-900/40 rounded-2xl border border-slate-800">
-            <PlayCircle className="w-8 h-8" />
-            <p className="text-sm">
-              Belum ada episode tersedia.
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {episodeList.map((ep, idx) => {
-              const epId =
-                ep?.episodeId ||
-                ep?.id ||
-                ep?.slug ||
-                ep?.endpoint ||
-                ep?.episode_id;
-              // ep.title bisa berupa number (3, 2, 1) dari API
-              const rawEpTitle = ep?.title ?? ep?.name ?? ep?.episode ?? null;
-              const epTitle = rawEpTitle !== null && rawEpTitle !== ""
-                ? `Episode ${rawEpTitle}`
-                : `Episode ${idx + 1}`;
-
-              return (
-                <Link
-                  key={idx}
-                  to={epId ? `/watch/${epId}` : "#"}
-                  className="bg-slate-900 hover:bg-indigo-600/20 hover:border-indigo-500 border border-slate-800 p-3 rounded-xl transition-all text-center group flex flex-col items-center gap-1.5"
-                >
-                  <PlayCircle className="w-4 h-4 text-slate-600 group-hover:text-indigo-400 transition-colors" />
-                  <span className="text-xs font-semibold text-slate-300 group-hover:text-indigo-300 transition-colors leading-tight">
-                    {epTitle}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      )}
     </main>
   );
 }

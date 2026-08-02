@@ -1,85 +1,93 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
-import { ImageOff } from 'lucide-react';
+import { PlayCircle, Star, Tv2, Film } from 'lucide-react';
+import { fixUrl } from '../lib/utils';
 
-// Pastikan URL selalu punya protocol (API kadang return tanpa https://)
-const fixUrl = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `https://${url}`;
-};
-
-
-export default function AnimeCard({ anime, isNew, rank }) {
-  const animeId  = anime.animeId || anime.slug || anime.endpointId || anime.endpoint || anime.id;
-  const [imgError, setImgError] = useState(false);
-  const posterSrc = fixUrl(anime.poster || anime.image || anime.thumb);
-
+export default function AnimeCard({ anime, isNew = false, rank = null }) {
+  const animeId  = anime?.animeId || anime?.slug || anime?.id;
+  const poster   = fixUrl(anime?.poster || anime?.image || anime?.thumb || '');
+  const episodes = anime?.episodes ?? anime?.totalEpisodes ?? null;
+  const score    = anime?.score?.value ?? anime?.score ?? null;
+  const type     = anime?.type ?? null;
+  const isMovie  = type?.toLowerCase() === 'movie';
 
   return (
     <Link
       to={`/detail/${animeId}`}
-      className="group relative flex flex-col rounded-xl overflow-hidden bg-slate-900/40 ring-1 ring-slate-800/60 hover:ring-indigo-500/50 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-indigo-500/10"
+      className="group relative flex flex-col gap-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-xl"
     >
-      <div className="relative aspect-[3/4] overflow-hidden bg-slate-950">
-                {!imgError && posterSrc ? (
+      {/* ── Poster ──────────────────────────────────────────────────────── */}
+      <div className="relative aspect-[3/4] w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800/60
+        group-hover:border-indigo-500/40 transition-all duration-300 shadow-md group-hover:shadow-indigo-500/10 group-hover:shadow-lg">
+
+        {poster ? (
           <img
-            src={posterSrc}
-            alt={anime.title}
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            src={poster}
+            alt={anime?.title ?? ''}
             loading="lazy"
-            onError={() => setImgError(true)}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            onError={(e) => { e.currentTarget.style.display = 'none'; }}
           />
         ) : (
-          <div className="h-full w-full flex flex-col items-center justify-center gap-2 bg-slate-900">
-            <ImageOff className="w-7 h-7 text-slate-700" />
-            <span className="text-[9px] text-slate-700 text-center px-2 leading-tight line-clamp-2">
-              {anime.title}
-            </span>
+          <div className="w-full h-full flex items-center justify-center">
+            <Tv2 className="w-8 h-8 text-slate-700" />
           </div>
         )}
 
-        {rank && (
-          <span
-            className="absolute -bottom-2 -right-1 text-[56px] font-black leading-none select-none pointer-events-none"
-            style={{
-              color: rank <= 3 ? 'rgba(251,191,36,0.18)' : 'rgba(148,163,184,0.10)',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
-            {rank}
-          </span>
-        )}
+        {/* gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent
+          opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-        {rank && (
-          <div className={`absolute top-1.5 left-1.5 z-10 h-5 w-5 rounded-md flex items-center justify-center text-[10px] font-black shadow
+        {/* Play icon on hover */}
+        <div className="absolute inset-0 flex items-center justify-center
+          opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <PlayCircle className="w-9 h-9 text-white drop-shadow-lg" />
+        </div>
+
+        {/* ── Badges ── */}
+        {/* Rank */}
+        {rank !== null && (
+          <div className={`absolute top-1.5 left-1.5 min-w-[20px] h-5 px-1 rounded-md flex items-center justify-center
+            text-[9px] font-black shadow-md
             ${rank === 1 ? 'bg-amber-400 text-slate-950' :
               rank === 2 ? 'bg-slate-300 text-slate-950' :
               rank === 3 ? 'bg-amber-700 text-white' :
-              'bg-slate-800/90 text-slate-300 ring-1 ring-slate-700'}`}
-          >
-            {rank}
+              'bg-slate-800/90 text-slate-300 border border-slate-700'}`}>
+            #{rank}
           </div>
         )}
 
-        {isNew && !rank && (
-          <span className="absolute top-1.5 left-1.5 z-10 bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow">
+        {/* NEW badge */}
+        {isNew && rank === null && (
+          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-black
+            bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
             NEW
-          </span>
+          </div>
         )}
 
-        {anime.episodes && (
-          <span className="absolute bottom-1.5 left-1.5 z-10 text-[10px] font-bold text-white bg-black/50 backdrop-blur-sm px-1.5 py-0.5 rounded-md">
-            {anime.episodes} eps
-          </span>
+        {/* Episode count */}
+        {episodes !== null && (
+          <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold
+            bg-black/70 text-slate-200 backdrop-blur-sm flex items-center gap-1">
+            {isMovie ? <Film className="w-2.5 h-2.5" /> : null}
+            {isMovie ? 'Movie' : `${episodes} eps`}
+          </div>
+        )}
+
+        {/* Score */}
+        {score && (
+          <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold
+            bg-black/70 text-amber-400 backdrop-blur-sm flex items-center gap-0.5">
+            <Star className="w-2.5 h-2.5 fill-amber-400" />
+            {typeof score === 'number' ? score.toFixed(1) : score}
+          </div>
         )}
       </div>
 
-      <div className="px-2 pt-2 pb-2.5">
-        <h3 className="text-[11px] font-semibold text-slate-300 group-hover:text-indigo-300 transition-colors line-clamp-2 leading-snug">
-          {anime.title}
-        </h3>
-      </div>
+      {/* ── Title ───────────────────────────────────────────────────────── */}
+      <p className="mt-1.5 text-[11px] font-semibold text-slate-300 group-hover:text-white
+        line-clamp-2 leading-tight transition-colors duration-200 px-0.5">
+        {anime?.title ?? '—'}
+      </p>
     </Link>
   );
 }

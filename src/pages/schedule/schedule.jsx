@@ -1,175 +1,184 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Calendar, Clock, AlertCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { CalendarDays, Clock3, Star, Tv2, ChevronRight } from 'lucide-react';
 import { getSchedule } from '../../api/anime/api';
-import AnimeCard from '../../components/AnimeCard';
+import { fixUrl, fetchWithRetry } from '../../lib/utils';
+import LoadingSpinner from '../../components/LoadingSpinner';
+import ErrorBanner    from '../../components/ErrorBanner';
+import PageHeader     from '../../components/PageHeader';
 
-// Key `key` dipakai di UI (tombol hari, bahasa Indonesia).
-// `apiDay` adalah nama hari ASLI yang dipakai API (ternyata bahasa Inggris,
-// lihat field `day` di dalam data.days dari response).
-const DAYS = [
-  { key: 'senin',  label: 'Senin',  apiDay: 'Monday' },
-  { key: 'selasa', label: 'Selasa', apiDay: 'Tuesday' },
-  { key: 'rabu',   label: 'Rabu',   apiDay: 'Wednesday' },
-  { key: 'kamis',  label: 'Kamis',  apiDay: 'Thursday' },
-  { key: 'jumat',  label: 'Jumat',  apiDay: 'Friday' },
-  { key: 'sabtu',  label: 'Sabtu',  apiDay: 'Saturday' },
-  { key: 'minggu', label: 'Minggu', apiDay: 'Sunday' },
-];
+const DAYS_ID = {
+  Monday:    'Senin',
+  Tuesday:   'Selasa',
+  Wednesday: 'Rabu',
+  Thursday:  'Kamis',
+  Friday:    'Jumat',
+  Saturday:  'Sabtu',
+  Sunday:    'Minggu',
+};
+const DAY_KEYS = Object.keys(DAYS_ID);
 
-// ─── Parse "4d 23h 17m" (atau kombinasi sebagiannya) jadi milidetik ─────────
-// API cuma ngasih COUNTDOWN relatif ke waktu fetch, bukan jam tayang tetap.
-// Return null kalau formatnya gak dikenali sama sekali.
-function parseEstimationToMs(estimation) {
-  if (!estimation || typeof estimation !== 'string') return null;
-
-  const dMatch = estimation.match(/(\d+)\s*d/i);
-  const hMatch = estimation.match(/(\d+)\s*h/i);
-  const mMatch = estimation.match(/(\d+)\s*m/i);
-
-  if (!dMatch && !hMatch && !mMatch) return null;
-
-  const days = dMatch ? parseInt(dMatch[1], 10) : 0;
-  const hours = hMatch ? parseInt(hMatch[1], 10) : 0;
-  const minutes = mMatch ? parseInt(mMatch[1], 10) : 0;
-
-  return ((days * 24 + hours) * 60 + minutes) * 60 * 1000;
+function parseEstimation(str) {
+  if (!str || typeof str !== 'string') return null;
+  const m = str.match(/(\d+)d\s*(\d+)h\s*(\d+)m/);
+  if (!m) return null;
+  return (parseInt(m[1]) * 86400 + parseInt(m[2]) * 3600 + parseInt(m[3]) * 60) * 1000;
 }
 
-// ─── Info waktu + badge "Telat" di bawah tiap AnimeCard ─────────────────────
-function ScheduleInfo({ anime, fetchedAt, now }) {
-  const durationMs = parseEstimationToMs(anime?.estimation);
+function ReleaseTag({ estimation, fetchedAt }) {
+  const [label, setLabel] = useState('');
 
-  if (durationMs == null || !fetchedAt) {
-    return null; // format estimation gak dikenali, jangan nampilin info ngasal
-  }
+  useEffect(() => {
+    const ms = parseEstimation(estimation);
+    if (!ms || !fetchedAt) { setLabel(''); return; }
 
-  const releaseAt = fetchedAt + durationMs;
-  const isLate = now > releaseAt;
+    const update = () => {
+      const diff = (fetchedAt + ms) - Date.now();
+      if (diff <= 0) { setLabel('Sudah rilis'); return; }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setLabel(h > 0 ? `${h}j ${m}m lagi` : `${m}m lagi`);
+    };
 
-  const releaseDate = new Date(releaseAt);
-  const dayLabel = releaseDate.toLocaleDateString('id-ID', { weekday: 'long' });
-  const timeLabel = releaseDate.toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+    update();
+    const id = setInterval(update, 30000);
+    return () => clearInterval(id);
+  }, [estimation, fetchedAt]);
+
+  if (!label) return null;
+  const released = label === 'Sudah rilis';
+  return (
+    <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-md ${
+      released ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+               : 'bg-slate-800 text-slate-500 border border-slate-700/40'
+    }`}>
+      <Clock3 className="w-2.5 h-2.5" />
+      {label}
+    </span>
+  );
+}
+
+function AnimeRow({ anime, fetchedAt }) {
+  const poster = fixUrl(anime?.poster || '');
+  const score  = anime?.score ?? null;
+  const animeId = anime?.animeId || anime?.slug;
 
   return (
-    <div className="mt-1 flex items-center justify-between gap-1.5 text-[10px]">
-      <span className="inline-flex items-center gap-1 text-slate-500">
-        <Clock className="w-3 h-3 shrink-0" />
-        {dayLabel}, {timeLabel}
-      </span>
-      {isLate && (
-        <span className="inline-flex items-center gap-1 text-red-400 font-semibold shrink-0">
-          <AlertCircle className="w-3 h-3" />
-          Telat
-        </span>
-      )}
-    </div>
+    <Link to={`/detail/${animeId}`}
+      className="flex items-center gap-3 p-3 rounded-xl bg-slate-900/40 hover:bg-slate-800/60
+        border border-slate-800/40 hover:border-indigo-500/30 transition-all group">
+      {/* Poster thumb */}
+      <div className="shrink-0 w-10 h-14 rounded-lg overflow-hidden bg-slate-800 border border-slate-700/40">
+        {poster
+          ? <img src={poster} alt={anime?.title} loading="lazy" className="w-full h-full object-cover" />
+          : <div className="w-full h-full flex items-center justify-center"><Tv2 className="w-4 h-4 text-slate-600" /></div>
+        }
+      </div>
+
+      {/* Info */}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors line-clamp-1">
+          {anime?.title}
+        </p>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {score && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-400 font-semibold">
+              <Star className="w-2.5 h-2.5 fill-amber-400" />{score}
+            </span>
+          )}
+          {anime?.genres && (
+            <span className="text-[10px] text-slate-600 line-clamp-1">{anime.genres}</span>
+          )}
+          <ReleaseTag estimation={anime?.estimation} fetchedAt={fetchedAt} />
+        </div>
+      </div>
+
+      <ChevronRight className="w-4 h-4 text-slate-700 group-hover:text-indigo-400 shrink-0 transition-colors" />
+    </Link>
   );
 }
 
 export default function Schedule() {
-  const [activeDay, setActiveDay] = useState('senin');
-  const [allDays,   setAllDays]   = useState([]); // seluruh data.days (7 hari) dari API
+  const [schedule,  setSchedule]  = useState({});
+  const [activeDay, setActiveDay] = useState('');
+  const [fetchedAt, setFetchedAt] = useState(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState('');
-  const [fetchedAt, setFetchedAt] = useState(null); // jam device pas data ini di-fetch
-  const [now,       setNow]       = useState(() => Date.now());
+  const abortRef = useRef(false);
 
-  // PENTING: endpoint /samehadaku/schedule ternyata SELALU balikin jadwal
-  // satu minggu penuh sekaligus di data.days — parameter ?day=... diabaikan
-  // backend. Jadi cukup fetch SEKALI saat halaman dibuka, lalu filter per
-  // hari dilakukan di frontend (bukan refetch tiap klik tombol hari).
-  //
-  // fetchedAt dicatat di sini juga, karena field `estimation` dari tiap anime
-  // ("4d 23h 17m") adalah COUNTDOWN dihitung relatif ke saat request ini
-  // dikirim — bukan jam tayang absolut. Supaya waktu rilis tiap anime bisa
-  // dihitung sekali dan tetap akurat selama sesi (fetchedAt + durasi), bukan
-  // ikut mundur tiap kali komponen re-render.
   useEffect(() => {
-    const fetchSchedule = async () => {
-      setLoading(true);
-      setError('');
+    abortRef.current = false;
+    setLoading(true); setError('');
+
+    (async () => {
       try {
-        const requestTime = Date.now();
-        const res = await getSchedule();
-        const days = res?.data?.data?.days;
-        setAllDays(Array.isArray(days) ? days : []);
-        setFetchedAt(requestTime);
-      } catch (err) {
-        console.error('Failed to load schedule:', err);
-        setError('Gagal memuat jadwal. Coba refresh halaman.');
-        setAllDays([]);
+        const res = await fetchWithRetry(() => getSchedule());
+        if (abortRef.current) return;
+        const days = res?.data?.data?.days ?? [];
+        const map  = {};
+        for (const d of days) if (d.day && d.animeList) map[d.day] = d.animeList;
+        setSchedule(map);
+        setFetchedAt(Date.now());
+
+        // set hari aktif ke hari ini kalau ada
+        const todayEn = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+        setActiveDay(map[todayEn] ? todayEn : DAY_KEYS.find((k) => map[k]) ?? '');
+      } catch {
+        if (!abortRef.current) setError('Gagal memuat jadwal. Coba refresh halaman.');
       } finally {
-        setLoading(false);
+        if (!abortRef.current) setLoading(false);
       }
-    };
+    })();
 
-    fetchSchedule();
-  }, []); // <- cuma sekali, bukan [activeDay]
-
-  // Update "now" tiap 30 detik biar badge "Telat" bisa muncul otomatis
-  // begitu waktunya lewat, tanpa perlu refresh halaman.
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(interval);
+    return () => { abortRef.current = true; };
   }, []);
 
-  const animeList = useMemo(() => {
-    const activeApiDay = DAYS.find((d) => d.key === activeDay)?.apiDay;
-    const match = allDays.find(
-      (d) => d?.day?.toLowerCase() === activeApiDay?.toLowerCase()
-    );
-    return Array.isArray(match?.animeList) ? match.animeList : [];
-  }, [allDays, activeDay]);
+  const animeList = schedule[activeDay] ?? [];
+  const todayEn   = new Date().toLocaleDateString('en-US', { weekday: 'long' });
 
   return (
-    <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 min-h-[80vh]">
-      <div className="flex items-center gap-2 mb-6">
-        <Calendar className="w-6 h-6 text-indigo-400" />
-        <h1 className="text-xl font-bold text-white">Jadwal Rilis Anime</h1>
-      </div>
+    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
+      <PageHeader
+        icon={CalendarDays}
+        title="Jadwal Rilis"
+        subtitle="Update setiap minggu · data dari samehadaku.how"
+      />
 
-      {/* Filter Hari */}
-      <div className="flex gap-2 overflow-x-auto pb-3 mb-6 scrollbar-none">
-        {DAYS.map((day) => (
-          <button
-            key={day.key}
-            onClick={() => setActiveDay(day.key)}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
-              activeDay === day.key
-                ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/30'
-                : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            {day.label}
-          </button>
-        ))}
-      </div>
+      <ErrorBanner message={error} />
 
-      {error && (
-        <div className="mb-4 text-xs text-red-400 font-semibold">{error}</div>
-      )}
+      {loading ? <LoadingSpinner fullPage /> : (
+        <>
+          {/* Day tabs */}
+          <div className="flex gap-1 overflow-x-auto pb-1 mb-5 no-scrollbar">
+            {DAY_KEYS.filter((d) => schedule[d]).map((day) => {
+              const isToday  = day === todayEn;
+              const isActive = day === activeDay;
+              return (
+                <button key={day} onClick={() => setActiveDay(day)}
+                  className={`shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200 border border-slate-800'
+                  }`}>
+                  {DAYS_ID[day]}
+                  {isToday && (
+                    <span className={`ml-1 text-[9px] ${isActive ? 'text-indigo-200' : 'text-indigo-500'}`}>●</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
 
-      {/* List Anime */}
-      {loading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800" />
-        </div>
-      ) : animeList.length === 0 ? (
-        <div className="text-center py-20 text-slate-500 text-sm">
-          Tidak ada jadwal tayang untuk hari ini.
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {animeList.map((anime, i) => (
-            <div key={anime.animeId || anime.href || i}>
-              <AnimeCard anime={anime} />
-              <ScheduleInfo anime={anime} fetchedAt={fetchedAt} now={now} />
-            </div>
-          ))}
-        </div>
+          {/* Anime list */}
+          <div className="space-y-2">
+            {animeList.length === 0
+              ? <p className="text-sm text-slate-600 text-center py-10">Tidak ada jadwal untuk hari ini.</p>
+              : animeList.map((anime, i) => (
+                  <AnimeRow key={anime.animeId || i} anime={anime} fetchedAt={fetchedAt} />
+                ))
+            }
+          </div>
+        </>
       )}
     </main>
   );

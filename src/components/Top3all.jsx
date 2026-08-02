@@ -1,93 +1,71 @@
 import { Link } from 'react-router-dom';
+import { Star, Trophy } from 'lucide-react';
+import { fixUrl } from '../lib/utils';
 
-import { Trophy, Medal, Crown } from 'lucide-react';
+function PodiumCard({ anime, rank }) {
+  const animeId = anime?.animeId || anime?.slug;
+  const poster  = fixUrl(anime?.poster || anime?.image || '');
+  const score   = anime?.score?.value ?? anime?.score ?? null;
 
-// Pastikan URL selalu punya protocol (API kadang return tanpa https://)
-const fixUrl = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `https://${url}`;
-};
-
-const PODIUM = [
-  { pos: 2, height: 'h-16 sm:h-20', barColor: 'from-slate-600 to-slate-500', textColor: 'text-slate-300', borderColor: 'border-slate-600', Icon: Medal, iconColor: 'text-slate-300' },
-  { pos: 1, height: 'h-24 sm:h-28', barColor: 'from-amber-600 to-amber-400', textColor: 'text-amber-400', borderColor: 'border-amber-500', Icon: Crown, iconColor: 'text-amber-400' },
-  { pos: 3, height: 'h-12 sm:h-14', barColor: 'from-amber-900 to-amber-800', textColor: 'text-amber-700', borderColor: 'border-amber-800', Icon: Trophy, iconColor: 'text-amber-700' },
-];
-
-export default function Top3all({ popularTop3 }) {
-  if (!popularTop3 || popularTop3.length !== 3) return null;
-
-  // susunan yang masuk: [juara2, juara1, juara3]
-  const ordered = [
-    { ...popularTop3[0], ...PODIUM[0] },
-    { ...popularTop3[1], ...PODIUM[1] },
-    { ...popularTop3[2], ...PODIUM[2] },
-  ];
+  const colors = {
+    1: { ring: 'ring-amber-400',   badge: 'bg-amber-400 text-slate-950',   label: '🥇', h: 'h-44' },
+    2: { ring: 'ring-slate-400',   badge: 'bg-slate-300 text-slate-950',   label: '🥈', h: 'h-36' },
+    3: { ring: 'ring-amber-700',   badge: 'bg-amber-700 text-white',       label: '🥉', h: 'h-32' },
+  }[rank] ?? { ring: 'ring-slate-700', badge: 'bg-slate-800 text-slate-300', label: `#${rank}`, h: 'h-28' };
 
   return (
-    <div className="relative rounded-2xl overflow-hidden border border-slate-800/60 bg-gradient-to-b from-slate-900/80 to-slate-900/30 p-5 sm:p-6">
-      {/* subtle radial glow behind podium */}
-      <div className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 w-64 h-32 rounded-full bg-indigo-500/5 blur-2xl" />
+    <Link to={`/detail/${animeId}`} className="flex flex-col items-center gap-2 group w-full max-w-[120px]">
+      {/* Rank badge */}
+      <span className="text-xl">{colors.label}</span>
 
-      {/* Header */}
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2">
-          <Trophy className="w-4 h-4 text-amber-400" />
-          <h2 className="text-sm font-black text-slate-100 tracking-wide uppercase">Top 3 Terpopuler</h2>
-        </div>
-        <Link
-          to="/populer-alltime"
-          className="text-[11px] font-semibold text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 px-3 py-1.5 rounded-lg transition-all"
-        >
-          Lihat semua →
-        </Link>
+      {/* Poster */}
+      <div className={`relative w-full aspect-[3/4] rounded-xl overflow-hidden ring-2 ${colors.ring}
+        shadow-lg group-hover:scale-105 transition-transform duration-300`}>
+        {poster
+          ? <img src={poster} alt={anime?.title} loading="lazy" className="w-full h-full object-cover" />
+          : <div className="w-full h-full bg-slate-800" />
+        }
+        {score && (
+          <div className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5
+            bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded-md text-[9px] font-bold text-amber-400">
+            <Star className="w-2.5 h-2.5 fill-amber-400" />
+            {typeof score === 'number' ? score.toFixed(1) : score}
+          </div>
+        )}
       </div>
 
-      {/* Podium */}
-      <div className="flex items-end justify-center gap-3 sm:gap-5 max-w-sm mx-auto">
-        {ordered.map((item, i) => {
-          const animeId = item.animeId || item.slug || item.endpointId || item.id;
-          const isFirst = item.pos === 1;
-          return (
-            <div
-              key={i}
-              className={`flex flex-col items-center flex-1 transition-transform duration-300 ${isFirst ? 'hover:-translate-y-2' : 'hover:-translate-y-1'}`}
-            >
-              {/* Crown / icon */}
-              <item.Icon className={`w-4 h-4 mb-1.5 ${item.iconColor} ${isFirst ? 'w-5 h-5' : ''}`} />
+      {/* Title */}
+      <p className="text-[11px] font-semibold text-slate-300 group-hover:text-white
+        text-center line-clamp-2 leading-tight transition-colors">
+        {anime?.title ?? '—'}
+      </p>
+    </Link>
+  );
+}
 
-              {/* Poster */}
-              <Link to={`/detail/${animeId}`} className="w-full">
-                <div className={`relative aspect-[3/4] w-full rounded-xl overflow-hidden shadow-lg border ${item.borderColor} ${isFirst ? 'shadow-amber-500/20 scale-105' : ''}`}>
-                  <img
-                    src={fixUrl(item.poster || item.image || item.thumb)}
-                    alt={item.title}
-                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
-                  {/* Position badge */}
-                  <div className={`absolute top-1.5 left-1.5 w-5 h-5 rounded-md flex items-center justify-center text-[10px] font-black shadow
-                    ${item.pos === 1 ? 'bg-amber-400 text-slate-950' :
-                      item.pos === 2 ? 'bg-slate-300 text-slate-950' :
-                      'bg-amber-800 text-white'}`}
-                  >
-                    {item.pos}
-                  </div>
-                </div>
-              </Link>
+export default function Top3all({ popularTop3 = [] }) {
+  if (!popularTop3?.length) return null;
 
-              {/* Title */}
-              <p className={`text-[10px] font-bold mt-2 text-center line-clamp-1 w-full ${item.textColor}`}>
-                {item.title}
-              </p>
+  // urutan tampil: 2nd | 1st | 3rd (podium style)
+  const [first, second, third] = popularTop3;
+  const display = [
+    { anime: second, rank: 2 },
+    { anime: first,  rank: 1 },
+    { anime: third,  rank: 3 },
+  ].filter((d) => d.anime);
 
-              {/* Bar */}
-              <div className={`w-full bg-gradient-to-t ${item.barColor} ${item.height} mt-2 rounded-t-xl`} />
-            </div>
-          );
-        })}
+  return (
+    <section className="mt-4">
+      <div className="flex items-center gap-2 mb-6">
+        <Trophy className="w-4 h-4 text-amber-400" />
+        <h2 className="text-base font-bold text-white">Top Anime Populer</h2>
       </div>
-    </div>
+
+      <div className="flex items-end justify-center gap-4 sm:gap-8">
+        {display.map(({ anime, rank }) => (
+          <PodiumCard key={rank} anime={anime} rank={rank} />
+        ))}
+      </div>
+    </section>
   );
 }

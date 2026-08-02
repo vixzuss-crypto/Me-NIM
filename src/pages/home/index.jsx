@@ -1,21 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { Search, X, ChevronLeft, ChevronRight, Flame, ChevronDown } from 'lucide-react';
-import { home, getRecent, getPopularAnime, searchAnime, getSchedule, getAnimeDetail } from '../../api/anime/api';
-import Top3all   from '../../components/Top3all';
-import AnimeCard from '../../components/AnimeCard';
-import Carousel  from '../../components/Carousel';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Search, X, ChevronLeft, ChevronDown, Flame } from 'lucide-react';
+import {
+  home, getRecent, getPopularAnime, searchAnime, getSchedule, getAnimeDetail,
+} from '../../api/anime/api';
+import { fixUrl, fetchWithRetry, throttledFetch, wait } from '../../lib/utils';
+import PodiumSection  from '../../components/PodiumSection';
+import AnimeGrid      from '../../components/AnimeGrid';
+import HeroCarousel   from '../../components/HeroCarousel';
+import Pagination     from '../../components/Pagination';
+import LoadingSpinner from '../../components/LoadingSpinner';
 
 const INITIAL_COUNT = 15;
 
-const fixUrl = (url) => {
-  if (!url) return '';
-  if (url.startsWith('http')) return url;
-  return `https://${url}`;
-};
-
 export default function Home() {
   const [recentList,   setRecentList]   = useState([]);
-  const [allTimeTop3,  setAllTimeTop3]  = useState([]);
+  const [heroItems,    setHeroItems]    = useState([]); // raw list buat HeroCarousel
+  const [topAnime,     setTopAnime]     = useState([]); // rank 1–10 buat PodiumSection
   const [searchList,   setSearchList]   = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [searchQuery,  setSearchQuery]  = useState('');
@@ -23,184 +23,157 @@ export default function Home() {
   const [page,         setPage]         = useState(1);
   const [showAll,      setShowAll]      = useState(false);
 
-  const sectionRef        = useRef(null);
-  const popularCache      = useRef(null);
-  const coverMapRef       = useRef({});     // schedule: animeId → poster
-  const detailMapRef      = useRef({});     // detail API: animeId → poster
-  const schedulePromise   = useRef(null);   // Promise tunggal agar schedule hanya difetch sekali
-  const abortRef          = useRef(false);
+  const sectionRef      = useRef(null);
+  const coverMapRef     = useRef({});
+  const detailMapRef    = useRef({});
+  const schedulePromise = useRef(null);
+  const popularCache    = useRef(null);   // cache top 10
+  const abortRef        = useRef(false);
 
-  // ─── Fetch ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    abortRef.current = false;
-
-    const extractList = (res) => {
-      if (!res?.data?.data) return [];
-      return Array.isArray(res.data.data)
-        ? res.data.data
-        : Object.values(res.data.data).find((v) => Array.isArray(v)) || [];
-    };
-    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-
-    const fetchWithRetry = async (fn, retryDelay = 1000) => {
-      try {
-        return await fn();
-      } catch (err) {
-        if (err?.response?.status === 429 && !abortRef.current) {
-          await wait(retryDelay);
-          if (abortRef.current) return null;
-          return await fn();
-        }
-        throw err;
-      }
-    };
-
-    // ── Pastikan schedule sudah di-fetch (satu kali, hasil di-cache di Promise) ──
-    const ensureSchedule = () => {
-      if (!schedulePromise.current) {
-        schedulePromise.current = (async () => {
-          try {
-            const resSched = await fetchWithRetry(() => getSchedule());
-            if (resSched?.data?.data?.days) {
-              for (const day of resSched.data.data.days) {
-                for (const anime of (day.animeList || [])) {
-                  if (anime.animeId && anime.poster) {
-                    coverMapRef.current[anime.animeId] = fixUrl(anime.poster);
-                  }
+  // ── Schedule: fetch sekali, cache di Promise ──────────────────────────────
+  const ensureSchedule = useCallback(() => {
+    if (!schedulePromise.current) {
+      schedulePromise.current = (async () => {
+        try {
+          await wait(1000); // beri jeda lebih besar sebelum schedule fetch
+          const res = await fetchWithRetry(() => throttledFetch(() => getSchedule()), 2000);
+          if (res?.data?.data?.days) {
+            for (const day of res.data.data.days) {
+              for (const anime of (day.animeList || [])) {
+                if (anime.animeId && anime.poster) {
+                  coverMapRef.current[anime.animeId] = fixUrl(anime.poster);
                 }
               }
             }
-          } catch (_) { /* schedule gagal → coverMapRef tetap apa adanya */ }
-        })();
-      }
-      return schedulePromise.current; // selalu return Promise yang sama
-    };
+          }
+        } catch (_) {}
+      })();
+    }
+    return schedulePromise.current;
+  }, []);
 
-    // ── Fetch detail poster untuk animeId yang tidak ada di schedule/detail cache ──
-    // Prioritas: detailMapRef > coverMapRef > poster dari home/recent
-    const fetchMissingDetails = async (list, limit = 8) => {
-      const missingIds = list
-        .filter(
-          (a) =>
-            a.animeId &&
-            !detailMapRef.current[a.animeId] &&
-            !coverMapRef.current[a.animeId]
-        )
-        .map((a) => a.animeId)
-        .slice(0, limit);
+  // ── Detail fetch untuk poster yang missing ────────────────────────────────
+  const fetchMissingDetails = useCallback(async (list, limit = 3) => {
+    // Kurangi limit dari 5 → 3 untuk menekan jumlah request
+    const ids = list
+      .filter((a) => a.animeId && !detailMapRef.current[a.animeId] && !coverMapRef.current[a.animeId])
+      .map((a) => a.animeId)
+      .slice(0, limit);
 
-      for (const id of missingIds) {
+    for (const id of ids) {
+      if (abortRef.current) break;
+      try {
+        const res  = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(id)), 2000);
         if (abortRef.current) break;
-        try {
-          const res = await fetchWithRetry(() => getAnimeDetail(id));
-          if (abortRef.current) break;
-          const data = res?.data?.data || res?.data;
-          const poster =
-            data?.poster || data?.image || data?.cover || data?.thumbnail;
-          if (poster) detailMapRef.current[id] = fixUrl(poster);
-          await wait(300);
-        } catch (_) { /* skip */ }
-      }
-    };
+        const data = res?.data?.data || res?.data;
+        const p    = data?.poster || data?.image || data?.cover;
+        if (p) detailMapRef.current[id] = fixUrl(p);
+        await wait(900); // perbesar dari 400ms → 900ms
+      } catch (_) {}
+    }
+  }, []);
 
-    // ── Merge poster: detail > schedule > home/recent poster > null ──
-    // Dipanggil SETELAH semua sumber sudah terisi
-    const applyPosterCache = (list) =>
-      list.map((anime) => ({
-        ...anime,
-        poster:
-          fixUrl(
-            detailMapRef.current[anime.animeId] ||
-            coverMapRef.current[anime.animeId]  ||
-            anime.poster ||
-            ''
-          ) || null,
-      }));
+  // ── Merge poster priority: detail > schedule > raw ────────────────────────
+  const applyPosterCache = useCallback((list) =>
+    list.map((a) => ({
+      ...a,
+      poster: fixUrl(
+        detailMapRef.current[a.animeId] ||
+        coverMapRef.current[a.animeId]  ||
+        a.poster || ''
+      ) || null,
+    })), []);
 
-    const fetchData = async () => {
+  // ── Main fetch ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    abortRef.current = false;
+
+    const run = async () => {
       setLoading(true);
       try {
+        // ── SEARCH MODE ──
         if (activeSearch) {
-          const res = await fetchWithRetry(() => searchAnime(activeSearch, page));
+          const res = await fetchWithRetry(() => throttledFetch(() => searchAnime(activeSearch, page)), 2000);
           if (abortRef.current || !res) return;
-          setSearchList(extractList(res));
-
-        } else {
-          let listPage1 = [];
-
-          if (page === 1) {
-            // Step 1 — home() → recent list (poster masih episode thumbnail)
-            const resHome = await fetchWithRetry(() => home());
-            if (abortRef.current || !resHome) return;
-            listPage1 =
-              resHome?.data?.data?.recent?.animeList || extractList(resHome);
-          } else {
-            const res1 = await fetchWithRetry(() => getRecent(page));
-            if (abortRef.current || !res1) return;
-            listPage1 = extractList(res1);
-          }
-
-          // Step 2 — schedule (dijalankan paralel dengan Step 3 & 4)
-          //           ensureSchedule() return Promise yang sama kalau sudah jalan,
-          //           jadi aman dipanggil berkali-kali tanpa double-fetch.
-          const scheduleTask = ensureSchedule();
-
-          // Step 4 — getRecent(page+1) → listPage2  (paralel dengan schedule)
-          await wait(300);
-          if (abortRef.current) return;
-          const res2 = await fetchWithRetry(() => getRecent(page + 1));
-          if (abortRef.current || !res2) return;
-          const listPage2 = extractList(res2);
-
-          // Tunggu schedule selesai sebelum lanjut ke detail fetch
-          await scheduleTask;
-          if (abortRef.current) return;
-
-          // Step 3 — detail fetch untuk anime yang masih belum punya poster
-          //           dari schedule (cek kedua list sekaligus)
-          const allCards = [...listPage1, ...listPage2].filter(
-            (anime, idx, arr) =>
-              arr.findIndex(
-                (a) =>
-                  (a.animeId || a.slug || a.id) ===
-                  (anime.animeId || anime.slug || anime.id)
-              ) === idx
-          );
-
-          await fetchMissingDetails(allCards, 8);
-          if (abortRef.current) return;
-
-          // Step 5 — applyPosterCache setelah SEMUA sumber siap
-          const combined = applyPosterCache(allCards);
-          setRecentList(combined);
-          setShowAll(false);
-
-          // ── Popular: fetch sekali, cache selamanya ──
-          if (!popularCache.current) {
-            await wait(500);
-            if (abortRef.current) return;
-            const resPopular = await fetchWithRetry(() => getPopularAnime(1));
-            if (abortRef.current || !resPopular) return;
-            const popList = extractList(resPopular);
-            if (popList.length >= 3) {
-              popularCache.current = [popList[1], popList[0], popList[2]];
-            }
-          }
-          if (!abortRef.current && popularCache.current) {
-            setAllTimeTop3(popularCache.current);
-          }
+          const d   = res?.data?.data;
+          setSearchList(Array.isArray(d) ? d : (d?.animeList ?? []));
+          return;
         }
+
+        // ── HOME MODE ──
+        // Step 1: home() / recent page N
+        let listPage1 = [];
+        if (page === 1) {
+          const res = await fetchWithRetry(() => throttledFetch(() => home()), 2000);
+          if (abortRef.current || !res) return;
+          listPage1 = res?.data?.data?.recent?.animeList ?? [];
+          // raw list buat HeroCarousel (enrich sendiri di dalam komponen)
+          setHeroItems(listPage1.filter((a) => a.animeId && a.poster));
+        } else {
+          const res = await fetchWithRetry(() => throttledFetch(() => getRecent(page)), 2000);
+          if (abortRef.current || !res) return;
+          listPage1 = res?.data?.data?.animeList ?? [];
+        }
+
+        // Step 2: schedule paralel (jalan di background, bukan blocking)
+        const scheduleTask = ensureSchedule();
+
+        // Step 3: recent page+1 — perbesar jeda dari 600ms → 1200ms
+        await wait(1200);
+        if (abortRef.current) return;
+        const res2     = await fetchWithRetry(() => throttledFetch(() => getRecent(page + 1)), 2000);
+        if (abortRef.current || !res2) return;
+        const listPage2 = res2?.data?.data?.animeList ?? [];
+
+        // Step 4: tunggu schedule
+        await scheduleTask;
+        if (abortRef.current) return;
+
+        // Deduplicate
+        const seen = new Set();
+        const allCards = [...listPage1, ...listPage2].filter((a) => {
+          const key = a.animeId || a.slug;
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        // Step 5: detail fetch (limit 5)
+        await fetchMissingDetails(allCards, 5);
+        if (abortRef.current) return;
+
+        setRecentList(applyPosterCache(allCards));
+        setShowAll(false);
+
+        // Step 6: popular top 10 — fetch SEKALI, cache
+        if (page === 1 && !popularCache.current) {
+          await wait(2000); // perbesar dari 800ms → 2000ms, semua step sebelumnya udah kelar
+          if (abortRef.current) return;
+          try {
+            const rp = await fetchWithRetry(() => throttledFetch(() => getPopularAnime(1)), 2000);
+            if (abortRef.current || !rp) return;
+            const pop = rp?.data?.data?.animeList ?? [];
+            if (pop.length >= 3) {
+              popularCache.current = pop.slice(0, 10);
+            }
+          } catch (_) {}
+        }
+        if (!abortRef.current && popularCache.current) {
+          setTopAnime(popularCache.current);
+        }
+
       } catch (err) {
-        if (!abortRef.current) console.error('Error fetching data:', err);
+        if (!abortRef.current) console.error('[Home]', err);
+      } finally {
+        if (!abortRef.current) setLoading(false);
       }
-      if (!abortRef.current) setLoading(false);
     };
 
-    fetchData();
-
+    run();
     return () => { abortRef.current = true; };
-  }, [page, activeSearch]);
+  }, [page, activeSearch, ensureSchedule, fetchMissingDetails, applyPosterCache]);
 
+  // ── Handlers ──────────────────────────────────────────────────────────────
   const handleSearch = (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
@@ -208,26 +181,18 @@ export default function Home() {
     setActiveSearch(searchQuery.trim());
   };
 
-  const clearSearch = () => {
-    setSearchQuery('');
-    setActiveSearch('');
-    setPage(1);
-  };
+  const clearSearch = () => { setSearchQuery(''); setActiveSearch(''); setPage(1); };
 
   const changePage = (next) => {
     setPage(next);
     setShowAll(false);
-    setTimeout(() => {
-      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
+    setTimeout(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
-  const visibleList =
-    page === 1 && !showAll ? recentList.slice(0, INITIAL_COUNT) : recentList;
-  const hasMore =
-    page === 1 && !showAll && recentList.length > INITIAL_COUNT;
+  const visibleList = page === 1 && !showAll ? recentList.slice(0, INITIAL_COUNT) : recentList;
+  const hasMore     = page === 1 && !showAll && recentList.length > INITIAL_COUNT;
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-6 overflow-x-hidden">
 
@@ -241,51 +206,40 @@ export default function Home() {
               placeholder="Cari anime..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 text-slate-100 text-sm rounded-xl pl-9 pr-4 py-2.5 focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-slate-600"
+              className="w-full bg-slate-900 border border-slate-800 text-slate-100 text-sm rounded-xl
+                pl-9 pr-10 py-2.5 focus:outline-none focus:border-indigo-500 transition-colors
+                placeholder:text-slate-600"
             />
             {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-              >
+              <button type="button" onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-          <button
-            type="submit"
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors flex items-center gap-1.5"
-          >
-            <Search className="w-3.5 h-3.5" />
-            Cari
+          <button type="submit"
+            className="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold px-5 py-2.5
+              rounded-xl transition-colors flex items-center gap-1.5 shrink-0">
+            <Search className="w-3.5 h-3.5" /> Cari
           </button>
         </form>
 
         {activeSearch && (
-          <button
-            onClick={clearSearch}
-            className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-          >
-            <ChevronLeft className="w-3 h-3" />
-            Kembali ke Beranda
+          <button onClick={clearSearch}
+            className="mt-2 inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors">
+            <ChevronLeft className="w-3 h-3" /> Kembali ke Beranda
           </button>
         )}
       </div>
 
-      {/* ── LOADING ─────────────────────────────────────────────────────── */}
-      {loading ? (
-        <div className="flex min-h-[40vh] items-center justify-center">
-          <div className="h-10 w-10 animate-spin rounded-full border-4 border-t-indigo-500 border-slate-800" />
-        </div>
+      {loading ? <LoadingSpinner fullPage /> : activeSearch ? (
 
-      ) : activeSearch ? (
-        /* ── HASIL PENCARIAN ────────────────────────────────────────────── */
+        /* ── SEARCH RESULTS ───────────────────────────────────────────── */
         <div>
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <p className="text-[11px] text-slate-500 mb-0.5">Hasil pencarian untuk</p>
-              <h2 className="text-lg font-bold text-white">"{activeSearch}"</h2>
+              <p className="text-[11px] text-slate-500 mb-0.5">Hasil pencarian</p>
+              <h2 className="text-lg font-black text-white">"{activeSearch}"</h2>
             </div>
             {searchList.length > 0 && (
               <span className="text-xs text-slate-500 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
@@ -293,86 +247,57 @@ export default function Home() {
               </span>
             )}
           </div>
-
-          {searchList.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
-              <Search className="w-8 h-8" />
-              <p className="text-sm">Tidak ada hasil untuk "{activeSearch}"</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
-              {searchList.map((anime, i) => (
-                <AnimeCard key={i} anime={anime} isNew={false} />
-              ))}
-            </div>
+          <AnimeGrid list={searchList} />
+          {searchList.length > 0 && (
+            <Pagination page={page}
+              onPrev={() => changePage(Math.max(1, page - 1))}
+              onNext={() => changePage(page + 1)} />
           )}
         </div>
 
       ) : (
-        /* ── BERANDA ────────────────────────────────────────────────────── */
+
+        /* ── BERANDA ──────────────────────────────────────────────────── */
         <div className="space-y-10">
 
-          {/* Carousel video */}
-          <Carousel />
+          {/* Hero carousel — BG dari poster detail API */}
+          {heroItems.length > 0 && <HeroCarousel rawList={heroItems} />}
 
-          {/* ── Update Terbaru ─────────────────────────────────────────── */}
+          {/* Update Terbaru */}
           <section ref={sectionRef} className="scroll-mt-20">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Flame className="w-4 h-4 text-orange-400" />
-                Update Terbaru
+                <Flame className="w-4 h-4 text-orange-400" /> Update Terbaru
               </h2>
               <span className="text-[11px] text-slate-500 bg-slate-900 border border-slate-800 px-3 py-1 rounded-lg">
                 Hal {page}
               </span>
             </div>
 
-            {/* Grid card */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3">
-              {visibleList.map((anime, i) => (
-                <AnimeCard key={i} anime={anime} isNew={true} />
-              ))}
-            </div>
+            <AnimeGrid list={visibleList} isNew />
 
-            {/* Show More */}
             {hasMore && (
               <div className="flex justify-center mt-5">
-                <button
-                  onClick={() => setShowAll(true)}
-                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 px-5 py-2 rounded-xl transition-all"
-                >
+                <button onClick={() => setShowAll(true)}
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400
+                    hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800
+                    px-5 py-2 rounded-xl transition-all">
                   <ChevronDown className="w-3.5 h-3.5" />
                   Tampilkan lebih banyak ({recentList.length - INITIAL_COUNT} lagi)
                 </button>
               </div>
             )}
 
-            {/* Pagination */}
-            {(page > 1 || showAll || recentList.length <= INITIAL_COUNT) && (
-              <div className="flex items-center justify-center gap-2 mt-6">
-                <button
-                  onClick={() => changePage(Math.max(page - 1, 1))}
-                  disabled={page === 1}
-                  className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-900 text-slate-300 px-4 py-2 rounded-xl border border-slate-800 disabled:opacity-30 hover:bg-slate-800 transition-colors"
-                >
-                  <ChevronLeft className="w-3.5 h-3.5" /> Prev
-                </button>
-                <span className="text-xs font-semibold text-slate-400 bg-slate-900 border border-slate-800 px-4 py-2 rounded-xl min-w-[4rem] text-center">
-                  {page}
-                </span>
-                <button
-                  onClick={() => changePage(page + 1)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold bg-slate-900 text-slate-300 px-4 py-2 rounded-xl border border-slate-800 hover:bg-slate-800 transition-colors"
-                >
-                  Next <ChevronRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
+            {(!hasMore || showAll) && (
+              <Pagination
+                page={page}
+                onPrev={() => changePage(Math.max(1, page - 1))}
+                onNext={() => changePage(page + 1)} />
             )}
           </section>
 
-          {/* Top 3 Podium */}
-          <Top3all popularTop3={allTimeTop3} />
-
+          {/* Podium + mini carousel rank 4–10 */}
+          {topAnime.length >= 3 && <PodiumSection topAnime={topAnime} />}
         </div>
       )}
     </main>

@@ -2,33 +2,52 @@ import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
-// 1. Ambil data halaman utama ringkas
-export const home = () => axios.get(`${BASE_URL}samehadaku/home`);
+// ── Axios instance ────────────────────────────────────────────────────────────
+// JANGAN tambah header custom di sini — server sankavollerei tidak allow
+// header selain default (Cache-Control, Pragma, dll trigger CORS preflight).
+// Biarkan browser kirim default headers saja.
+const api = axios.create({
+  baseURL: BASE_URL,
+  timeout: 10000,
+});
 
-// 2. Ambil anime terbaru lengkap dengan pagination (default halaman 1)
-export const getRecent = (page = 1) => axios.get(`${BASE_URL}samehadaku/recent?page=${page}`);
+// ── Interceptor: log error biar debugging lebih mudah ────────────────────────
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status;
+    const url    = err?.config?.url ?? '';
+    if (status === 403) {
+      console.warn(`[API] 403 Forbidden → ${url}`);
+    } else if (status === 429) {
+      console.warn(`[API] 429 Too Many Requests → ${url}`);
+    } else if (!status) {
+      console.warn(`[API] Network Error → ${url} (CORS atau server down)`);
+    }
+    return Promise.reject(err);
+  }
+);
 
-// 3. Cari anime berdasarkan kata kunci (q) dan pagination
-export const searchAnime = (query, page = 1) => axios.get(`${BASE_URL}samehadaku/search?q=${query}&page=${page}`);
+// ── Core ─────────────────────────────────────────────────────────────────────
+export const home            = ()                   => api.get('samehadaku/home');
+export const getRecent       = (page = 1)           => api.get(`samehadaku/recent?page=${page}`);
+export const searchAnime     = (q, page = 1)        => api.get(`samehadaku/search?q=${encodeURIComponent(q)}&page=${page}`);
+export const getPopularAnime = (page = 1)           => api.get(`samehadaku/popular?page=${page}`);
+export const getSchedule     = ()                   => api.get('samehadaku/schedule');
 
-// 4. Mengambil anime yang sedang populer
-export const getPopularAnime = (page = 1) => axios.get(`${BASE_URL}samehadaku/popular?page=${page}`);
+// ── Detail & Stream ───────────────────────────────────────────────────────────
+export const getAnimeDetail   = (animeId)           => api.get(`samehadaku/anime/${animeId}`);
+export const getEpisodeStream = (episodeId)         => api.get(`samehadaku/episode/${episodeId}`);
+export const getAnimeServer   = (serverId)          => api.get(`samehadaku/server/${serverId}`);
 
-// ========================================================
-// 🚀 TAMBAHAN BARU UNTUK FITUR NONTON & DETAIL ANIME
-// ========================================================
+// ── Browse / Filter ───────────────────────────────────────────────────────────
+export const getGenres        = ()                  => api.get('samehadaku/genres');
+export const getGenreAnime    = (genreId, page = 1) => api.get(`samehadaku/genres/${genreId}?page=${page}`);
+export const getOngoing       = (page = 1)          => api.get(`samehadaku/ongoing?page=${page}`);
+export const getCompleted     = (page = 1)          => api.get(`samehadaku/completed?page=${page}`);
+export const getMovies        = (page = 1)          => api.get(`samehadaku/movies?page=${page}`);
+export const getAnimeList     = (page = 1)          => api.get(`samehadaku/list?page=${page}`);
 
-// 5. Ambil detail anime & daftar episodenya (Parameter: animeId / slug anime)
-// Contoh usage: getAnimeDetail('one-piece')
-export const getAnimeDetail = (animeId) => axios.get(`${BASE_URL}samehadaku/anime/${animeId}`);
-
-// 6. Ambil data episode & link video streaming (Parameter: episodeId / slug episode)
-// Contoh usage: getEpisodeStream('one-piece-episode-1100')
-export const getEpisodeStream = (episodeId) => axios.get(`${BASE_URL}samehadaku/episode/${episodeId}`);
-
-// 7. benerin
-export const getAnimeServer = (serverId) =>
-  axios.get(`${BASE_URL}samehadaku/server/${serverId}`);
-
-// 8. Ambil jadwal rilis anime (Parameter: day / hari, misal: 'monday', 'tuesday', dll)
-export const getSchedule = (day) => axios.get(`${BASE_URL}samehadaku/schedule?day=${day}`);
+// ── Batch ─────────────────────────────────────────────────────────────────────
+export const getBatchList     = (page = 1)          => api.get(`samehadaku/batch?page=${page}`);
+export const getBatchDetail   = (batchId)           => api.get(`samehadaku/batch/${batchId}`);
