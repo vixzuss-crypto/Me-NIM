@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { Play, Star, Tv2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getAnimeDetail } from '../api/anime/api';
-import { fixUrl, fetchWithRetry, wait } from '../lib/utils';
+import { fixUrl, fetchWithRetry, throttledFetch, wait } from '../lib/utils';
 
 // Ambil random item dari array
 const sample = (arr, n) => {
@@ -23,7 +23,7 @@ async function enrichItems(rawList, abortRef) {
   for (const anime of picked) {
     if (abortRef.current) break;
     try {
-      const res  = await fetchWithRetry(() => getAnimeDetail(anime.animeId), 2000);
+      const res  = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(anime.animeId)));
       if (abortRef.current) break;
       const d    = res?.data?.data || res?.data;
       const poster = fixUrl(d?.poster || d?.image || anime.poster || '');
@@ -40,7 +40,7 @@ async function enrichItems(rawList, abortRef) {
         synopsis: d?.synopsis?.paragraphs?.[0] || '',
         genres:   (d?.genreList || []).slice(0, 3).map((g) => g.title),
       });
-      await wait(350);
+      // throttledFetch sudah handle gap antar request (700ms), tidak perlu wait tambahan
     } catch (_) { /* skip */ }
   }
   return results;

@@ -167,66 +167,76 @@ function MiniRankCard({ anime, rank }) {
   );
 }
 
-// ─── Infinite Auto-Scroll Strip (RAF-based, pixel-accurate loop) ──────────────
+// ─── Infinite Auto-Scroll Strip ─────────────────────────────────────────────────
+// Pakai ResizeObserver untuk ukur halfWidth setelah layout selesai.
+// List di-tile minimal 3x lebar container agar tidak pernah ada gap.
 function InfiniteScrollStrip({ miniList }) {
   const trackRef = useRef(null);
   const animRef  = useRef(null);
   const posRef   = useRef(0);
   const pauseRef = useRef(false);
-  const SPEED    = 0.5; // px per frame
+  const halfRef  = useRef(0);
+  const SPEED    = 0.6; // px per frame ≈ 36px/s @ 60fps
 
   useEffect(() => {
     if (!miniList?.length) return;
     const track = trackRef.current;
     if (!track) return;
 
-    const start = () => {
-      const children  = Array.from(track.children);
-      const half      = miniList.length;
-      const lastOfFirst = children[half - 1];
-      if (!lastOfFirst) return;
+    // Reset state
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    posRef.current  = 0;
+    halfRef.current = 0;
+    track.style.transform = 'translateX(0px)';
 
-      // Ukur lebar tepat set-1 dari DOM (termasuk gap)
-      const trackLeft   = track.getBoundingClientRect().left;
-      const lastRight   = lastOfFirst.getBoundingClientRect().right;
-      // Tambah 8px untuk gap setelah item terakhir biar seamless
-      const halfWidthPx = lastRight - trackLeft + 8;
+    const ro = new ResizeObserver(() => {
+      const sw = track.scrollWidth;
+      if (sw > 0 && halfRef.current === 0) {
+        // half = lebar SATU set (bukan dua)
+        // track berisi [set A, set B] — half = sw / 2
+        halfRef.current = sw / 2;
+        ro.disconnect();
 
-      posRef.current = 0;
-
-      const tick = () => {
-        if (!pauseRef.current) {
-          posRef.current += SPEED;
-          if (posRef.current >= halfWidthPx) {
-            posRef.current -= halfWidthPx;
+        const tick = () => {
+          if (!pauseRef.current) {
+            posRef.current += SPEED;
+            if (posRef.current >= halfRef.current) {
+              posRef.current -= halfRef.current; // seamless reset
+            }
+            track.style.transform = `translateX(-${posRef.current}px)`;
           }
-          track.style.transform = `translateX(-${posRef.current}px)`;
-        }
+          animRef.current = requestAnimationFrame(tick);
+        };
         animRef.current = requestAnimationFrame(tick);
-      };
+      }
+    });
+    ro.observe(track);
 
-      animRef.current = requestAnimationFrame(tick);
-    };
-
-    const t = setTimeout(start, 150);
     return () => {
-      clearTimeout(t);
+      ro.disconnect();
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, [miniList]);
 
   if (!miniList?.length) return null;
 
-  const doubled = [...miniList, ...miniList];
+  // Tile list minimal sampai ada ≥ 14 item per set agar tidak ada gap
+  // di viewport sempit (7 card × 2 = 14 cukup untuk cover semua lebar layar)
+  const MIN_ITEMS = 14;
+  let tiled = [...miniList];
+  while (tiled.length < MIN_ITEMS) tiled = [...tiled, ...miniList];
+
+  // Doubled untuk seamless loop
+  const doubled = [...tiled, ...tiled];
 
   return (
     <div
-      className="overflow-hidden rounded-xl"
+      className="overflow-hidden rounded-xl select-none"
       style={{
         maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
         WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
       }}
-      onMouseEnter={() => { pauseRef.current = true; }}
+      onMouseEnter={() => { pauseRef.current = true;  }}
       onMouseLeave={() => { pauseRef.current = false; }}
     >
       <div
@@ -235,7 +245,7 @@ function InfiniteScrollStrip({ miniList }) {
       >
         {doubled.map((anime, i) => (
           <MiniRankCard
-            key={`${anime?.animeId || i}-${i}`}
+            key={`${anime?.animeId ?? i}-${i}`}
             anime={anime}
             rank={(i % miniList.length) + 4}
           />
@@ -244,6 +254,7 @@ function InfiniteScrollStrip({ miniList }) {
     </div>
   );
 }
+
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 export default function PodiumSection({ topAnime = [] }) {
