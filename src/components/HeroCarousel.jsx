@@ -14,15 +14,18 @@ const sample = (arr, n) => {
   return copy.slice(0, n);
 };
 
-async function enrichItems(rawList, abortRef) {
+// enrichItems — pakai AbortController per-invocation, bukan shared ref
+// Ini mencegah StrictMode double-invoke: setiap call punya controller sendiri
+// yang di-abort saat cleanup, tidak terpengaruh oleh invoke berikutnya
+async function enrichItems(rawList, signal) {
   const picked = sample(rawList.filter((a) => a.animeId), 5);
   const results = [];
 
   for (const anime of picked) {
-    if (abortRef.current) break;
+    if (signal.aborted) break;
     try {
       const res = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(anime.animeId)));
-      if (abortRef.current) break;
+      if (signal.aborted) break;
       const d      = res?.data?.data || res?.data;
       const poster = fixUrl(d?.poster || d?.image || anime.poster || '');
       if (!poster) continue;
@@ -38,7 +41,10 @@ async function enrichItems(rawList, abortRef) {
         synopsis: d?.synopsis?.paragraphs?.[0] || '',
         genres:   (d?.genreList || []).slice(0, 3).map((g) => g.title),
       });
-    } catch (_) { /* skip */ }
+    } catch (e) {
+      if (e?.name === 'AbortError') break;
+      /* skip request error lainnya */
+    }
   }
   return results;
 }
@@ -49,21 +55,36 @@ export default function HeroCarousel({ rawList = [] }) {
   const [loaded,   setLoaded]   = useState(false);
   const [paused,   setPaused]   = useState(false);
   const [imgReady, setImgReady] = useState(false);
-  const abortRef = useRef(false);
-  const timerRef = useRef(null);
+  // Tidak pakai shared abortRef — setiap mount buat AbortController baru
+  // sehingga StrictMode double-invoke tidak bisa saling override
+  const controllerRef = useRef(null);
+  const enrichedRef   = useRef(false);  // sudah pernah enrich? skip double
+  const timerRef      = useRef(null);
 
   useEffect(() => {
     if (!rawList.length) return;
-    abortRef.current = false;
 
-    enrichItems(rawList, abortRef).then((enriched) => {
-      if (abortRef.current || !enriched.length) return;
+    // Batalkan enrich sebelumnya (dari StrictMode invoke pertama)
+    if (controllerRef.current) controllerRef.current.abort();
+    const ac = new AbortController();
+    controllerRef.current = ac;
+
+    // Reset flag enriched setiap rawList berubah
+    enrichedRef.current = false;
+
+    enrichItems(rawList, ac.signal).then((enriched) => {
+      // Jangan update state jika sudah di-abort atau sudah pernah enrich
+      if (ac.signal.aborted || enrichedRef.current) return;
+      if (!enriched.length) return;
+      enrichedRef.current = true;
       setItems(enriched);
       setIdx(0);
       setLoaded(true);
-    });
+    }).catch(() => { /* abort atau error lain */ });
 
-    return () => { abortRef.current = true; };
+    return () => {
+      ac.abort();
+    };
   }, [rawList.length]);
 
   const go = useCallback((next) => {
