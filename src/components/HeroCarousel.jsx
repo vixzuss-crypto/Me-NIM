@@ -5,7 +5,6 @@ import { getAnimeDetail } from '../api/anime/api';
 import { fixUrl, fetchWithRetry, throttledFetch, wait } from '../lib/utils';
 import AnimeImg from './AnimeImg';
 
-// Ambil random item dari array
 const sample = (arr, n) => {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -15,8 +14,6 @@ const sample = (arr, n) => {
   return copy.slice(0, n);
 };
 
-// Enrichment: ambil detail dari API untuk 5 anime random
-// supaya dapat genre, synopsis, dan poster hi-res
 async function enrichItems(rawList, abortRef) {
   const picked = sample(rawList.filter((a) => a.animeId), 5);
   const results = [];
@@ -24,9 +21,9 @@ async function enrichItems(rawList, abortRef) {
   for (const anime of picked) {
     if (abortRef.current) break;
     try {
-      const res  = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(anime.animeId)));
+      const res = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(anime.animeId)));
       if (abortRef.current) break;
-      const d    = res?.data?.data || res?.data;
+      const d      = res?.data?.data || res?.data;
       const poster = fixUrl(d?.poster || d?.image || anime.poster || '');
       if (!poster) continue;
       results.push({
@@ -47,15 +44,14 @@ async function enrichItems(rawList, abortRef) {
 }
 
 export default function HeroCarousel({ rawList = [] }) {
-  const [items,   setItems]   = useState([]);
-  const [idx,     setIdx]     = useState(0);
-  const [loaded,  setLoaded]  = useState(false);
-  const [paused,  setPaused]  = useState(false);
-  const [imgReady,setImgReady] = useState(false);
-  const abortRef  = useRef(false);
-  const timerRef  = useRef(null);
+  const [items,    setItems]    = useState([]);
+  const [idx,      setIdx]      = useState(0);
+  const [loaded,   setLoaded]   = useState(false);
+  const [paused,   setPaused]   = useState(false);
+  const [imgReady, setImgReady] = useState(false);
+  const abortRef = useRef(false);
+  const timerRef = useRef(null);
 
-  // Enrich di background
   useEffect(() => {
     if (!rawList.length) return;
     abortRef.current = false;
@@ -75,7 +71,6 @@ export default function HeroCarousel({ rawList = [] }) {
     setIdx((next + items.length) % items.length);
   }, [items.length]);
 
-  // Auto-slide 7s
   useEffect(() => {
     if (!items.length || paused) return;
     timerRef.current = setInterval(() => go(idx + 1), 7000);
@@ -94,30 +89,27 @@ export default function HeroCarousel({ rawList = [] }) {
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
     >
-      {/* ── BG full-bleed poster ─────────────────────────────────────────── */}
+      {/* BG full-bleed — pakai AnimeImg agar fallback chain aktif */}
       <AnimeImg
         key={poster}
         src={poster}
-        title={anime?.title}
-        animeId={anime?.animeId}
+        title={anime.title}
+        animeId={anime.animeId}
         alt=""
+        aria-hidden
         onLoad={() => setImgReady(true)}
         className={`absolute inset-0 w-full h-full object-cover scale-105
           transition-opacity duration-700 pointer-events-none select-none
           ${imgReady ? 'opacity-100' : 'opacity-0'}`}
         showTitle={false}
-        aria-hidden
       />
 
       {/* Gradient overlays */}
-      {/* Kiri: fade tebal biar teks selalu terbaca */}
       <div className="absolute inset-0 bg-gradient-to-r from-black via-black/75 to-transparent z-10" />
-      {/* Bawah: vignette gelap supaya judul & meta gak tenggelam ke poster */}
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/50 to-transparent z-10" />
-      {/* Atas: sedikit shadow biar ujung atas gak terlalu terang */}
       <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/50 to-transparent z-10" />
 
-      {/* ── Content ──────────────────────────────────────────────────────── */}
+      {/* Content */}
       <div className="relative z-20 flex h-full items-end sm:items-center px-6 sm:px-10 pb-8 sm:pb-0">
         <div className="max-w-lg">
 
@@ -200,34 +192,29 @@ export default function HeroCarousel({ rawList = [] }) {
         </div>
       </div>
 
-      {/* ── Nav arrows ───────────────────────────────────────────────────── */}
+      {/* Nav arrows */}
       {items.length > 1 && (
         <>
-          <button
-            onClick={() => go(idx - 1)}
+          <button onClick={() => go(idx - 1)}
             className="absolute left-3 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full
               bg-black/50 hover:bg-black/80 border border-white/10 flex items-center justify-center
-              text-white transition-all hover:scale-110"
-          >
+              text-white transition-all hover:scale-110">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <button
-            onClick={() => go(idx + 1)}
+          <button onClick={() => go(idx + 1)}
             className="absolute right-3 top-1/2 -translate-y-1/2 z-30 w-8 h-8 rounded-full
               bg-black/50 hover:bg-black/80 border border-white/10 flex items-center justify-center
-              text-white transition-all hover:scale-110"
-          >
+              text-white transition-all hover:scale-110">
             <ChevronRight className="w-4 h-4" />
           </button>
         </>
       )}
 
-      {/* ── Dots + progress ──────────────────────────────────────────────── */}
+      {/* Dots */}
       {items.length > 1 && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5">
           {items.map((_, i) => (
-            <button
-              key={i}
+            <button key={i}
               onClick={() => { setImgReady(false); setIdx(i); }}
               className={`rounded-full transition-all duration-300 ${
                 i === idx ? 'w-6 h-1.5 bg-indigo-400' : 'w-1.5 h-1.5 bg-white/30 hover:bg-white/60'

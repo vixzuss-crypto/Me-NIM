@@ -34,7 +34,7 @@ const RANK_CONFIG = {
 
 const pts = (coords) => coords.map(([x, y]) => `${x},${y}`).join(' ');
 
-// ─── 3D Podium SVG (Figma AI design) ─────────────────────────────────────────
+// ─── 3D Podium SVG ────────────────────────────────────────────────────────────
 function PodiumSVG({ rank }) {
   const { capW, capH, bodyH, bodyTopW, bodyBotW, colors, glow } = RANK_CONFIG[rank];
 
@@ -51,9 +51,9 @@ function PodiumSVG({ rank }) {
   const bodyFront = pts([[D, y1], [D + bodyTopW, y1], [D + bodyBotW, y2], [D, y2]]);
   const bodySide  = pts([[D, y1], [0, capH], [0, capH + bodyH], [D, y2]]);
 
-  const label   = rank === 1 ? '1ST' : rank === 2 ? '2ND' : '3RD';
-  const textX   = D + (bodyTopW + bodyBotW) / 4;
-  const textY   = y1 + bodyH / 2;
+  const label    = rank === 1 ? '1ST' : rank === 2 ? '2ND' : '3RD';
+  const textX    = D + (bodyTopW + bodyBotW) / 4;
+  const textY    = y1 + bodyH / 2;
   const fontSize = rank === 1 ? 19 : rank === 2 ? 15 : 13;
 
   return (
@@ -101,12 +101,14 @@ function PodiumCard({ anime, rank }) {
         className={`relative rounded-xl overflow-hidden ${ringClass} shadow-lg
           hover:scale-105 transition-transform duration-300 block`}
         style={{ width: posterW, height: posterH, flexShrink: 0 }}>
-        {poster
-          ? <img src={poster} alt={anime?.title} loading="lazy" className="w-full h-full object-cover" />
-          : <div className="w-full h-full bg-slate-800 flex items-center justify-center">
-              <span className="text-slate-600 text-4xl font-black">{rank}</span>
-            </div>
-        }
+        <AnimeImg
+          src={poster}
+          title={anime?.title}
+          animeId={animeId}
+          alt={anime?.title}
+          className="w-full h-full object-cover"
+          showTitle={false}
+        />
         {score && (
           <div className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5
             bg-black/75 backdrop-blur-sm px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-400">
@@ -171,66 +173,67 @@ function MiniRankCard({ anime, rank }) {
   );
 }
 
-// ─── Infinite Auto-Scroll Strip (RAF-based, pixel-accurate loop) ──────────────
+// ─── Infinite Auto-Scroll Strip ──────────────────────────────────────────────
 function InfiniteScrollStrip({ miniList }) {
   const trackRef = useRef(null);
   const animRef  = useRef(null);
   const posRef   = useRef(0);
   const pauseRef = useRef(false);
-  const SPEED    = 0.5; // px per frame
+  const halfRef  = useRef(0);
+  const SPEED    = 0.6;
 
   useEffect(() => {
     if (!miniList?.length) return;
     const track = trackRef.current;
     if (!track) return;
 
-    const start = () => {
-      const children  = Array.from(track.children);
-      const half      = miniList.length;
-      const lastOfFirst = children[half - 1];
-      if (!lastOfFirst) return;
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    posRef.current  = 0;
+    halfRef.current = 0;
+    track.style.transform = 'translateX(0px)';
 
-      // Ukur lebar tepat set-1 dari DOM (termasuk gap)
-      const trackLeft   = track.getBoundingClientRect().left;
-      const lastRight   = lastOfFirst.getBoundingClientRect().right;
-      // Tambah 8px untuk gap setelah item terakhir biar seamless
-      const halfWidthPx = lastRight - trackLeft + 8;
+    const ro = new ResizeObserver(() => {
+      const sw = track.scrollWidth;
+      if (sw > 0 && halfRef.current === 0) {
+        halfRef.current = sw / 2;
+        ro.disconnect();
 
-      posRef.current = 0;
-
-      const tick = () => {
-        if (!pauseRef.current) {
-          posRef.current += SPEED;
-          if (posRef.current >= halfWidthPx) {
-            posRef.current -= halfWidthPx;
+        const tick = () => {
+          if (!pauseRef.current) {
+            posRef.current += SPEED;
+            if (posRef.current >= halfRef.current) {
+              posRef.current -= halfRef.current;
+            }
+            track.style.transform = `translateX(-${posRef.current}px)`;
           }
-          track.style.transform = `translateX(-${posRef.current}px)`;
-        }
+          animRef.current = requestAnimationFrame(tick);
+        };
         animRef.current = requestAnimationFrame(tick);
-      };
+      }
+    });
+    ro.observe(track);
 
-      animRef.current = requestAnimationFrame(tick);
-    };
-
-    const t = setTimeout(start, 150);
     return () => {
-      clearTimeout(t);
+      ro.disconnect();
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, [miniList]);
 
   if (!miniList?.length) return null;
 
-  const doubled = [...miniList, ...miniList];
+  const MIN_ITEMS = 14;
+  let tiled = [...miniList];
+  while (tiled.length < MIN_ITEMS) tiled = [...tiled, ...miniList];
+  const doubled = [...tiled, ...tiled];
 
   return (
     <div
-      className="overflow-hidden rounded-xl"
+      className="overflow-hidden rounded-xl select-none"
       style={{
         maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
         WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
       }}
-      onMouseEnter={() => { pauseRef.current = true; }}
+      onMouseEnter={() => { pauseRef.current = true;  }}
       onMouseLeave={() => { pauseRef.current = false; }}
     >
       <div
@@ -239,7 +242,7 @@ function InfiniteScrollStrip({ miniList }) {
       >
         {doubled.map((anime, i) => (
           <MiniRankCard
-            key={`${anime?.animeId || i}-${i}`}
+            key={`${anime?.animeId ?? i}-${i}`}
             anime={anime}
             rank={(i % miniList.length) + 4}
           />
@@ -277,14 +280,12 @@ export default function PodiumSection({ topAnime = [] }) {
         </Link>
       </div>
 
-      {/* ── Podium 1–3 ── */}
       <div className="flex justify-center gap-4 sm:gap-8 mb-8 items-end">
         {podiumOrder.map(({ anime, rank }) => (
           <PodiumCard key={rank} anime={anime} rank={rank} />
         ))}
       </div>
 
-      {/* ── Infinite auto-scroll strip rank 4–10 ── */}
       {miniList.length > 0 && (
         <div>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
