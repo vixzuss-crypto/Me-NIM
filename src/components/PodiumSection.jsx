@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Trophy, ArrowRight } from 'lucide-react';
 import { fixUrl } from '../lib/utils';
+import AnimeImg from './AnimeImg';
 
 // ─── 3D depth offset ──────────────────────────────────────────────────────────
 const D = 14;
@@ -140,11 +141,14 @@ function MiniRankCard({ anime, rank }) {
         bg-slate-900 border border-slate-800/60
         group-hover:border-indigo-500/40 group-hover:shadow-lg group-hover:shadow-indigo-500/10
         transition-all duration-300">
-        {poster
-          ? <img src={poster} alt={anime?.title} loading="lazy"
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-          : <div className="w-full h-full bg-slate-800" />
-        }
+        <AnimeImg
+          src={poster}
+          title={anime?.title}
+          animeId={animeId}
+          alt={anime?.title}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          showTitle={false}
+        />
         <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md
           text-[9px] font-black bg-slate-900/85 text-slate-400 border border-slate-700/60">
           #{rank}
@@ -167,76 +171,66 @@ function MiniRankCard({ anime, rank }) {
   );
 }
 
-// ─── Infinite Auto-Scroll Strip ─────────────────────────────────────────────────
-// Pakai ResizeObserver untuk ukur halfWidth setelah layout selesai.
-// List di-tile minimal 3x lebar container agar tidak pernah ada gap.
+// ─── Infinite Auto-Scroll Strip (RAF-based, pixel-accurate loop) ──────────────
 function InfiniteScrollStrip({ miniList }) {
   const trackRef = useRef(null);
   const animRef  = useRef(null);
   const posRef   = useRef(0);
   const pauseRef = useRef(false);
-  const halfRef  = useRef(0);
-  const SPEED    = 0.6; // px per frame ≈ 36px/s @ 60fps
+  const SPEED    = 0.5; // px per frame
 
   useEffect(() => {
     if (!miniList?.length) return;
     const track = trackRef.current;
     if (!track) return;
 
-    // Reset state
-    if (animRef.current) cancelAnimationFrame(animRef.current);
-    posRef.current  = 0;
-    halfRef.current = 0;
-    track.style.transform = 'translateX(0px)';
+    const start = () => {
+      const children  = Array.from(track.children);
+      const half      = miniList.length;
+      const lastOfFirst = children[half - 1];
+      if (!lastOfFirst) return;
 
-    const ro = new ResizeObserver(() => {
-      const sw = track.scrollWidth;
-      if (sw > 0 && halfRef.current === 0) {
-        // half = lebar SATU set (bukan dua)
-        // track berisi [set A, set B] — half = sw / 2
-        halfRef.current = sw / 2;
-        ro.disconnect();
+      // Ukur lebar tepat set-1 dari DOM (termasuk gap)
+      const trackLeft   = track.getBoundingClientRect().left;
+      const lastRight   = lastOfFirst.getBoundingClientRect().right;
+      // Tambah 8px untuk gap setelah item terakhir biar seamless
+      const halfWidthPx = lastRight - trackLeft + 8;
 
-        const tick = () => {
-          if (!pauseRef.current) {
-            posRef.current += SPEED;
-            if (posRef.current >= halfRef.current) {
-              posRef.current -= halfRef.current; // seamless reset
-            }
-            track.style.transform = `translateX(-${posRef.current}px)`;
+      posRef.current = 0;
+
+      const tick = () => {
+        if (!pauseRef.current) {
+          posRef.current += SPEED;
+          if (posRef.current >= halfWidthPx) {
+            posRef.current -= halfWidthPx;
           }
-          animRef.current = requestAnimationFrame(tick);
-        };
+          track.style.transform = `translateX(-${posRef.current}px)`;
+        }
         animRef.current = requestAnimationFrame(tick);
-      }
-    });
-    ro.observe(track);
+      };
 
+      animRef.current = requestAnimationFrame(tick);
+    };
+
+    const t = setTimeout(start, 150);
     return () => {
-      ro.disconnect();
+      clearTimeout(t);
       if (animRef.current) cancelAnimationFrame(animRef.current);
     };
   }, [miniList]);
 
   if (!miniList?.length) return null;
 
-  // Tile list minimal sampai ada ≥ 14 item per set agar tidak ada gap
-  // di viewport sempit (7 card × 2 = 14 cukup untuk cover semua lebar layar)
-  const MIN_ITEMS = 14;
-  let tiled = [...miniList];
-  while (tiled.length < MIN_ITEMS) tiled = [...tiled, ...miniList];
-
-  // Doubled untuk seamless loop
-  const doubled = [...tiled, ...tiled];
+  const doubled = [...miniList, ...miniList];
 
   return (
     <div
-      className="overflow-hidden rounded-xl select-none"
+      className="overflow-hidden rounded-xl"
       style={{
         maskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
         WebkitMaskImage: 'linear-gradient(to right, transparent, black 6%, black 94%, transparent)',
       }}
-      onMouseEnter={() => { pauseRef.current = true;  }}
+      onMouseEnter={() => { pauseRef.current = true; }}
       onMouseLeave={() => { pauseRef.current = false; }}
     >
       <div
@@ -245,7 +239,7 @@ function InfiniteScrollStrip({ miniList }) {
       >
         {doubled.map((anime, i) => (
           <MiniRankCard
-            key={`${anime?.animeId ?? i}-${i}`}
+            key={`${anime?.animeId || i}-${i}`}
             anime={anime}
             rank={(i % miniList.length) + 4}
           />
@@ -254,7 +248,6 @@ function InfiniteScrollStrip({ miniList }) {
     </div>
   );
 }
-
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 export default function PodiumSection({ topAnime = [] }) {

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { getAnimeDetail } from '../../api/anime/api';
 import { fixUrl, fetchWithRetry } from '../../lib/utils';
+import AnimeImg from '../../components/AnimeImg';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorBanner    from '../../components/ErrorBanner';
 
@@ -85,20 +86,24 @@ export default function Detail() {
             bg-slate-900/60 p-5 sm:p-6">
             {/* BG blur */}
             {poster && (
-              <img src={poster} alt="" aria-hidden
-                className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-10 pointer-events-none" />
+              <AnimeImg src={poster} title={detail?.title} animeId={animeId} alt="" aria-hidden
+                className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-10 pointer-events-none"
+                showTitle={false} />
             )}
 
             <div className="relative flex gap-5 sm:gap-8">
               {/* Poster */}
               <div className="shrink-0 w-28 sm:w-40 aspect-[3/4] rounded-xl overflow-hidden
                 border border-slate-700/60 shadow-2xl shadow-black/60">
-                {poster
-                  ? <img src={poster} alt={detail?.title} className="w-full h-full object-cover" />
-                  : <div className="w-full h-full bg-slate-800 flex items-center justify-center">
-                      <Tv2 className="w-8 h-8 text-slate-600" />
-                    </div>
-                }
+                <AnimeImg
+                  src={poster}
+                  title={detail?.title}
+                  animeId={animeId}
+                  alt={detail?.title}
+                  className="w-full h-full object-cover"
+                  iconSize="w-8 h-8"
+                  showTitle
+                />
               </div>
 
               {/* Info */}

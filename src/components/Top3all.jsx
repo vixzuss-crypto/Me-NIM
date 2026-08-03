@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
 import { Star, Trophy } from 'lucide-react';
-import { fixUrl } from '../lib/utils';
+import AnimeImg from './AnimeImg';
 
 function PodiumCard({ anime, rank }) {
   const animeId = anime?.animeId || anime?.slug;
-  const poster  = fixUrl(anime?.poster || anime?.image || '');
+  const rawPoster = anime?.poster || anime?.image || '';
   const score   = anime?.score?.value ?? anime?.score ?? null;
 
   const colors = {
@@ -21,10 +21,14 @@ function PodiumCard({ anime, rank }) {
       {/* Poster */}
       <div className={`relative w-full aspect-[3/4] rounded-xl overflow-hidden ring-2 ${colors.ring}
         shadow-lg group-hover:scale-105 transition-transform duration-300`}>
-        {poster
-          ? <img src={poster} alt={anime?.title} loading="lazy" className="w-full h-full object-cover" />
-          : <div className="w-full h-full bg-slate-800" />
-        }
+        <AnimeImg
+          src={rawPoster}
+          title={anime?.title}
+          animeId={animeId}
+          alt={anime?.title}
+          className="w-full h-full object-cover"
+          showTitle={false}
+        />
         {score && (
           <div className="absolute bottom-1.5 right-1.5 flex items-center gap-0.5
             bg-black/70 backdrop-blur-sm px-1.5 py-0.5 rounded-md text-[9px] font-bold text-amber-400">

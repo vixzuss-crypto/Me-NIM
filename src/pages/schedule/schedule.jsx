@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { CalendarDays, Clock3, Star, Tv2, ChevronRight } from 'lucide-react';
 import { getSchedule } from '../../api/anime/api';
 import { fixUrl, fetchWithRetry } from '../../lib/utils';
+import AnimeImg from '../../components/AnimeImg';
 import LoadingSpinner from '../../components/LoadingSpinner';
 import ErrorBanner    from '../../components/ErrorBanner';
 import PageHeader     from '../../components/PageHeader';
@@ -69,10 +70,15 @@ function AnimeRow({ anime, fetchedAt }) {
         border border-slate-800/40 hover:border-indigo-500/30 transition-all group">
       {/* Poster thumb */}
       <div className="shrink-0 w-10 h-14 rounded-lg overflow-hidden bg-slate-800 border border-slate-700/40">
-        {poster
-          ? <img src={poster} alt={anime?.title} loading="lazy" className="w-full h-full object-cover" />
-          : <div className="w-full h-full flex items-center justify-center"><Tv2 className="w-4 h-4 text-slate-600" /></div>
-        }
+        <AnimeImg
+          src={poster}
+          title={anime?.title}
+          animeId={anime?.animeId}
+          alt={anime?.title}
+          className="w-full h-full object-cover"
+          iconSize="w-4 h-4"
+          showTitle={false}
+        />
       </div>
 
       {/* Info */}

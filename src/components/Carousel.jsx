@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Play, Star } from 'lucide-react';
 import { fixUrl } from '../lib/utils';
+import AnimeImg from './AnimeImg';
 
 export default function Carousel({ items = [] }) {
   const [idx,     setIdx]     = useState(0);
@@ -31,10 +32,13 @@ export default function Carousel({ items = [] }) {
     >
       {/* BG blur */}
       {poster && (
-        <img
+        <AnimeImg
           src={poster}
+          title={anime?.title}
+          animeId={anime?.animeId}
           alt=""
           className="absolute inset-0 w-full h-full object-cover scale-110 blur-md opacity-30 pointer-events-none select-none"
+          showTitle={false}
           aria-hidden
         />
       )}
@@ -46,11 +50,14 @@ export default function Carousel({ items = [] }) {
       <div className="relative z-20 flex h-full items-end sm:items-center p-5 sm:p-8 gap-6">
         {/* Poster thumb */}
         {poster && (
-          <img
+          <AnimeImg
             src={poster}
+            title={anime?.title}
+            animeId={anime?.animeId}
             alt={anime?.title}
             className="hidden sm:block w-24 h-36 object-cover rounded-xl border border-slate-700/60
               shadow-xl shrink-0 ring-1 ring-white/10"
+            showTitle={false}
           />
         )}
 

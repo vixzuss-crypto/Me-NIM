@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Play, Star, Tv2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { getAnimeDetail } from '../api/anime/api';
 import { fixUrl, fetchWithRetry, throttledFetch, wait } from '../lib/utils';
+import AnimeImg from './AnimeImg';
 
 // Ambil random item dari array
 const sample = (arr, n) => {
@@ -40,7 +41,6 @@ async function enrichItems(rawList, abortRef) {
         synopsis: d?.synopsis?.paragraphs?.[0] || '',
         genres:   (d?.genreList || []).slice(0, 3).map((g) => g.title),
       });
-      // throttledFetch sudah handle gap antar request (700ms), tidak perlu wait tambahan
     } catch (_) { /* skip */ }
   }
   return results;
@@ -95,15 +95,18 @@ export default function HeroCarousel({ rawList = [] }) {
       onMouseLeave={() => setPaused(false)}
     >
       {/* ── BG full-bleed poster ─────────────────────────────────────────── */}
-      <img
+      <AnimeImg
         key={poster}
         src={poster}
+        title={anime?.title}
+        animeId={anime?.animeId}
         alt=""
-        aria-hidden
         onLoad={() => setImgReady(true)}
         className={`absolute inset-0 w-full h-full object-cover scale-105
           transition-opacity duration-700 pointer-events-none select-none
           ${imgReady ? 'opacity-100' : 'opacity-0'}`}
+        showTitle={false}
+        aria-hidden
       />
 
       {/* Gradient overlays */}

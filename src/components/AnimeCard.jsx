@@ -1,14 +1,18 @@
 import { Link } from 'react-router-dom';
-import { PlayCircle, Star, Tv2, Film } from 'lucide-react';
+import { PlayCircle, Star, Tv2, Film, ImageOff } from 'lucide-react';
 import { fixUrl } from '../lib/utils';
+import useAnimeImage from '../hooks/useAnimeImage';
 
 export default function AnimeCard({ anime, isNew = false, rank = null }) {
   const animeId  = anime?.animeId || anime?.slug || anime?.id;
-  const poster   = fixUrl(anime?.poster || anime?.image || anime?.thumb || '');
+  const rawPoster = fixUrl(anime?.poster || anime?.image || anime?.thumb || '');
   const episodes = anime?.episodes ?? anime?.totalEpisodes ?? null;
   const score    = anime?.score?.value ?? anime?.score ?? null;
   const type     = anime?.type ?? null;
   const isMovie  = type?.toLowerCase() === 'movie';
+
+  // ── Fallback chain: samehadaku → Jikan MAL → icon ────────────────────────
+  const { src, failed, handleError } = useAnimeImage(rawPoster, anime?.title, animeId);
 
   return (
     <Link
@@ -19,32 +23,35 @@ export default function AnimeCard({ anime, isNew = false, rank = null }) {
       <div className="relative aspect-[3/4] w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800/60
         group-hover:border-indigo-500/40 transition-all duration-300 shadow-md group-hover:shadow-indigo-500/10 group-hover:shadow-lg">
 
-        {poster ? (
+        {src && !failed ? (
           <img
-            src={poster}
+            src={src}
             alt={anime?.title ?? ''}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            onError={handleError}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <Tv2 className="w-8 h-8 text-slate-700" />
+          /* Fallback akhir — icon */
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
+            <ImageOff className="w-7 h-7 text-slate-700" />
+            <span className="text-[9px] text-slate-700 text-center px-2 leading-tight line-clamp-2">
+              {anime?.title ?? ''}
+            </span>
           </div>
         )}
 
-        {/* gradient overlay */}
+        {/* Hover gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent
           opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
         {/* Play icon on hover */}
         <div className="absolute inset-0 flex items-center justify-center
-          opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
           <PlayCircle className="w-9 h-9 text-white drop-shadow-lg" />
         </div>
 
         {/* ── Badges ── */}
-        {/* Rank */}
         {rank !== null && (
           <div className={`absolute top-1.5 left-1.5 min-w-[20px] h-5 px-1 rounded-md flex items-center justify-center
             text-[9px] font-black shadow-md
@@ -56,7 +63,6 @@ export default function AnimeCard({ anime, isNew = false, rank = null }) {
           </div>
         )}
 
-        {/* NEW badge */}
         {isNew && rank === null && (
           <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-black
             bg-indigo-600 text-white shadow-md shadow-indigo-600/30">
@@ -64,7 +70,6 @@ export default function AnimeCard({ anime, isNew = false, rank = null }) {
           </div>
         )}
 
-        {/* Episode count */}
         {episodes !== null && (
           <div className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold
             bg-black/70 text-slate-200 backdrop-blur-sm flex items-center gap-1">
@@ -73,7 +78,6 @@ export default function AnimeCard({ anime, isNew = false, rank = null }) {
           </div>
         )}
 
-        {/* Score */}
         {score && (
           <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold
             bg-black/70 text-amber-400 backdrop-blur-sm flex items-center gap-0.5">

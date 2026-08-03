@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { extractList, fetchWithRetry } from '../lib/utils';
+import { extractList, fetchWithRetry, throttledFetch } from '../lib/utils';
 
 /**
  * Generic hook untuk halaman yang fetch list + pagination.
@@ -19,7 +19,7 @@ export function usePaginatedFetch(apiFn, page) {
 
     (async () => {
       try {
-        const res = await fetchWithRetry(() => apiFn(page));
+        const res = await fetchWithRetry(() => throttledFetch(() => apiFn(page)));
         if (abortRef.current) return;
         setList(extractList(res));
       } catch (err) {
