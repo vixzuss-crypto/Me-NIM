@@ -118,8 +118,8 @@ export default function Home() {
         // Step 2: schedule paralel (jalan di background, bukan blocking)
         const scheduleTask = ensureSchedule();
 
-        // Step 3: recent page+1 — perbesar jeda dari 600ms → 1200ms
-        await wait(1200);
+        // Step 3: recent page+1 — jeda 1500ms agar home() request tidak burst langsung
+        await wait(1500);
         if (abortRef.current) return;
         const res2     = await fetchWithRetry(() => throttledFetch(() => getRecent(page + 1)), 2000);
         if (abortRef.current || !res2) return;
@@ -138,8 +138,8 @@ export default function Home() {
           return true;
         });
 
-        // Step 5: detail fetch (limit 5)
-        await fetchMissingDetails(allCards, 5);
+        // Step 5: detail fetch (limit 2 — cukup untuk poster yang benar-benar kosong)
+        await fetchMissingDetails(allCards, 2);
         if (abortRef.current) return;
 
         setRecentList(applyPosterCache(allCards));
@@ -147,7 +147,7 @@ export default function Home() {
 
         // Step 6: popular top 10 — fetch SEKALI, cache
         if (page === 1 && !popularCache.current) {
-          await wait(2000); // perbesar dari 800ms → 2000ms, semua step sebelumnya udah kelar
+          await wait(3500); // perbesar lagi: carousel mulai enrich di detik ke-3, hindari tabrakan
           if (abortRef.current) return;
           try {
             const rp = await fetchWithRetry(() => throttledFetch(() => getPopularAnime(1)), 2000);

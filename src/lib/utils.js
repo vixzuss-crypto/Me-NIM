@@ -52,15 +52,23 @@ export const fetchWithRetry = async (fn, _timeout, maxRetries = 3) => {
 
 // ── Global request throttle ───────────────────────────────────────────────────
 // Semua request lewat sini supaya tidak burst lebih dari 1 req per MIN_GAP ms.
-// Naikkan MIN_GAP ke 1000–1200 kalau masih sering 429.
-const MIN_GAP = 700;
-let _lastReqTime = 0;
+// Pakai queue (serial) agar concurrent caller tidak saling bypass throttle.
+const MIN_GAP = 1200;
+let _queue = Promise.resolve();
 
-export const throttledFetch = async (fn) => {
-  const gap = Date.now() - _lastReqTime;
-  if (gap < MIN_GAP) await wait(MIN_GAP - gap);
-  _lastReqTime = Date.now();
-  return fn();
+export const throttledFetch = (fn) => {
+  _queue = _queue.then(async () => {
+    const start = Date.now();
+    try {
+      return await fn();
+    } finally {
+      // pastikan jeda MIN_GAP dihitung dari selesainya request, bukan mulainya
+      const elapsed = Date.now() - start;
+      const remaining = MIN_GAP - elapsed;
+      if (remaining > 0) await wait(remaining);
+    }
+  });
+  return _queue;
 };
 
 // ── Pagination helper ─────────────────────────────────────────────────────────

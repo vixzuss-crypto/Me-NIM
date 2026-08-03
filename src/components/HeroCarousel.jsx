@@ -18,7 +18,11 @@ const sample = (arr, n) => {
 // Ini mencegah StrictMode double-invoke: setiap call punya controller sendiri
 // yang di-abort saat cleanup, tidak terpengaruh oleh invoke berikutnya
 async function enrichItems(rawList, signal) {
-  const picked = sample(rawList.filter((a) => a.animeId), 5);
+  // Beri jeda agar home page selesai fetch duluan sebelum carousel mulai enrich
+  await wait(3000);
+  if (signal.aborted) return [];
+
+  const picked = sample(rawList.filter((a) => a.animeId), 3); // 5 → 3
   const results = [];
 
   for (const anime of picked) {
@@ -84,6 +88,7 @@ export default function HeroCarousel({ rawList = [] }) {
 
     return () => {
       ac.abort();
+      enrichedRef.current = false; // reset agar re-mount bisa enrich ulang
     };
   }, [rawList.length]);
 
