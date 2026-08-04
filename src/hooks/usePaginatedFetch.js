@@ -3,34 +3,59 @@ import { extractList, fetchWithRetry, throttledFetch } from '../lib/utils';
 
 /**
  * Generic hook untuk halaman yang fetch list + pagination.
- * @param {Function} apiFn  — (page) => Promise
- * @param {number}   page   — current page (state dari parent)
+ *
+ * Fitur anti-abuse:
+ * - AbortController: kalau user pindah halaman/ganti page sebelum response
+ *   datang, request di-abort dan di-skip dari antrian (tidak buang slot quota)
+ * - Cache key per endpoint+page: kalau data sudah ada, tidak request ulang
+ *
+ * @param {Function} apiFn    — (page) => Promise
+ * @param {number}   page     — current page (state dari parent)
+ * @param {string}   [cacheKeyPrefix] — prefix untuk cache key, default nama fn
  */
-export function usePaginatedFetch(apiFn, page) {
+export function usePaginatedFetch(apiFn, page, cacheKeyPrefix) {
   const [list,    setList]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
-  const abortRef = useRef(false);
+
+  // Ref untuk AbortController aktif — di-abort saat effect cleanup
+  const acRef = useRef(null);
 
   useEffect(() => {
-    abortRef.current = false;
+    // Abort request sebelumnya kalau user pindah halaman/page lebih cepat
+    // dari selesainya response (pindah tab, ganti pagination, dsb)
+    if (acRef.current) acRef.current.abort();
+    const ac      = new AbortController();
+    acRef.current = ac;
+
     setLoading(true);
     setError('');
 
+    // Cache key unik per endpoint + halaman
+    const prefix   = cacheKeyPrefix || apiFn.name || 'fetch';
+    const cacheKey = `${prefix}:page${page}`;
+
     (async () => {
       try {
-        const res = await fetchWithRetry(() => throttledFetch(() => apiFn(page)));
-        if (abortRef.current) return;
+        const res = await fetchWithRetry(
+          () => throttledFetch(() => apiFn(page), ac.signal),
+          cacheKey,
+          ac.signal,
+        );
+        if (ac.signal.aborted) return;
         setList(extractList(res));
       } catch (err) {
-        if (!abortRef.current) setError('Gagal memuat data. Coba refresh.');
+        if (err?.name === 'AbortError') return; // user sudah pindah — abaikan
+        if (!ac.signal.aborted) setError('Gagal memuat data. Coba refresh.');
       } finally {
-        if (!abortRef.current) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     })();
 
-    return () => { abortRef.current = true; };
-  }, [apiFn, page]);
+    return () => {
+      ac.abort(); // cleanup: abort kalau komponen unmount atau dep berubah
+    };
+  }, [apiFn, page, cacheKeyPrefix]);
 
   return { list, loading, error };
 }

@@ -10,7 +10,8 @@ import PageHeader  from '../../components/PageHeader';
 export default function Completed() {
   const [page, setPage] = useState(1);
   const apiFn = useCallback((p) => getCompleted(p), []);
-  const { list, loading, error } = usePaginatedFetch(apiFn, page);
+  const { list, loading, error } = usePaginatedFetch(apiFn, page, 'completed');
+
   const changePage = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (

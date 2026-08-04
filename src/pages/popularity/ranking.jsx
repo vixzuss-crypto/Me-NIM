@@ -10,7 +10,8 @@ import PageHeader  from '../../components/PageHeader';
 export default function Ranking() {
   const [page, setPage] = useState(1);
   const apiFn = useCallback((p) => getPopularAnime(p), []);
-  const { list, loading, error } = usePaginatedFetch(apiFn, page);
+  const { list, loading, error } = usePaginatedFetch(apiFn, page, 'popular');
+
   const changePage = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (

@@ -29,7 +29,6 @@ export default function Home() {
   const detailMapRef    = useRef({});
   const schedulePromise = useRef(null);
   const popularCache    = useRef(null);   // cache top 10
-  const abortRef        = useRef(false);
 
   // ── Schedule: fetch sekali, cache di Promise ──────────────────────────────
   const ensureSchedule = useCallback(() => {
@@ -37,7 +36,7 @@ export default function Home() {
       schedulePromise.current = (async () => {
         try {
           await wait(1000); // beri jeda lebih besar sebelum schedule fetch
-          const res = await fetchWithRetry(() => throttledFetch(() => getSchedule()), 2000);
+          const res = await fetchWithRetry(() => throttledFetch(() => getSchedule()), 'schedule', null);
           if (res?.data?.data?.days) {
             for (const day of res.data.data.days) {
               for (const anime of (day.animeList || [])) {
@@ -54,18 +53,18 @@ export default function Home() {
   }, []);
 
   // ── Detail fetch untuk poster yang missing ────────────────────────────────
-  const fetchMissingDetails = useCallback(async (list, limit = 3) => {
-    // Kurangi limit dari 5 → 3 untuk menekan jumlah request
+  const fetchMissingDetails = useCallback(async (list, limit = 3, signal = null) => {
+    // Kurangi limit untuk menekan jumlah request
     const ids = list
       .filter((a) => a.animeId && !detailMapRef.current[a.animeId] && !coverMapRef.current[a.animeId])
       .map((a) => a.animeId)
       .slice(0, limit);
 
     for (const id of ids) {
-      if (abortRef.current) break;
+      if (signal?.aborted) break;
       try {
-        const res  = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(id)), 2000);
-        if (abortRef.current) break;
+        const res  = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(id), signal), `detail:${id}`, signal);
+        if (signal?.aborted) break;
         const data = res?.data?.data || res?.data;
         const p    = data?.poster || data?.image || data?.cover;
         if (p) detailMapRef.current[id] = fixUrl(p);
@@ -87,7 +86,9 @@ export default function Home() {
 
   // ── Main fetch ────────────────────────────────────────────────────────────
   useEffect(() => {
-    abortRef.current = false;
+
+    // AbortController per run-invocation — abort kalau user pindah sebelum selesai
+    const ac = new AbortController();
 
     const run = async () => {
       setLoading(true);
@@ -95,8 +96,12 @@ export default function Home() {
       try {
         // ── SEARCH MODE ──
         if (activeSearch) {
-          const res = await fetchWithRetry(() => throttledFetch(() => searchAnime(activeSearch, page)), 2000);
-          if (abortRef.current || !res) return;
+          const searchKey = `search:${activeSearch}:page${page}`;
+          const res = await fetchWithRetry(
+            () => throttledFetch(() => searchAnime(activeSearch, page), ac.signal),
+            searchKey, ac.signal,
+          );
+          if (ac.signal.aborted || !res) return;
           const d   = res?.data?.data;
           setSearchList(Array.isArray(d) ? d : (d?.animeList ?? []));
           return;
@@ -106,15 +111,21 @@ export default function Home() {
         // Step 1: home() / recent page N
         let listPage1 = [];
         if (page === 1) {
-          const res = await fetchWithRetry(() => throttledFetch(() => home()), 2000);
-          if (abortRef.current || !res) return;
+          const res = await fetchWithRetry(
+            () => throttledFetch(() => home(), ac.signal),
+            `home:page${page}`, ac.signal,
+          );
+          if (ac.signal.aborted || !res) return;
           listPage1 = res?.data?.data?.recent?.animeList ?? [];
           // raw list buat HeroCarousel — set heroLoading false SEGERA agar carousel tampil duluan
           setHeroItems(listPage1.filter((a) => a.animeId && a.poster));
           setHeroLoading(false);
         } else {
-          const res = await fetchWithRetry(() => throttledFetch(() => getRecent(page)), 2000);
-          if (abortRef.current || !res) return;
+          const res = await fetchWithRetry(
+            () => throttledFetch(() => getRecent(page), ac.signal),
+            `recent:page${page}`, ac.signal,
+          );
+          if (ac.signal.aborted || !res) return;
           listPage1 = res?.data?.data?.animeList ?? [];
         }
 
@@ -123,14 +134,17 @@ export default function Home() {
 
         // Step 3: recent page+1 — perbesar jeda dari 600ms → 1200ms
         await wait(1200);
-        if (abortRef.current) return;
-        const res2     = await fetchWithRetry(() => throttledFetch(() => getRecent(page + 1)), 2000);
-        if (abortRef.current || !res2) return;
+        if (ac.signal.aborted) return;
+        const res2 = await fetchWithRetry(
+          () => throttledFetch(() => getRecent(page + 1), ac.signal),
+          `recent:page${page + 1}`, ac.signal,
+        );
+        if (ac.signal.aborted || !res2) return;
         const listPage2 = res2?.data?.data?.animeList ?? [];
 
         // Step 4: tunggu schedule
         await scheduleTask;
-        if (abortRef.current) return;
+        if (ac.signal.aborted) return;
 
         // Deduplicate
         const seen = new Set();
@@ -142,8 +156,8 @@ export default function Home() {
         });
 
         // Step 5: detail fetch (limit 5)
-        await fetchMissingDetails(allCards, 5);
-        if (abortRef.current) return;
+        await fetchMissingDetails(allCards, 3, ac.signal);
+        if (ac.signal.aborted) return;
 
         setRecentList(applyPosterCache(allCards));
         setShowAll(false);
@@ -151,29 +165,32 @@ export default function Home() {
         // Step 6: popular top 10 — fetch SEKALI, cache
         if (page === 1 && !popularCache.current) {
           await wait(2000); // perbesar dari 800ms → 2000ms, semua step sebelumnya udah kelar
-          if (abortRef.current) return;
+          if (ac.signal.aborted) return;
           try {
-            const rp = await fetchWithRetry(() => throttledFetch(() => getPopularAnime(1)), 2000);
-            if (abortRef.current || !rp) return;
+            const rp = await fetchWithRetry(
+              () => throttledFetch(() => getPopularAnime(1), ac.signal),
+              'popular:page1', ac.signal,
+            );
+            if (ac.signal.aborted || !rp) return;
             const pop = rp?.data?.data?.animeList ?? [];
             if (pop.length >= 3) {
               popularCache.current = pop.slice(0, 10);
             }
           } catch (_) {}
         }
-        if (!abortRef.current && popularCache.current) {
+        if (!ac.signal.aborted && popularCache.current) {
           setTopAnime(popularCache.current);
         }
 
       } catch (err) {
-        if (!abortRef.current) console.error('[Home]', err);
+        if (!ac.signal.aborted) console.error('[Home]', err);
       } finally {
-        if (!abortRef.current) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     };
 
     run();
-    return () => { abortRef.current = true; };
+    return () => { ac.abort(); };
   }, [page, activeSearch, ensureSchedule, fetchMissingDetails, applyPosterCache]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
