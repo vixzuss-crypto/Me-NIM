@@ -7,8 +7,8 @@ import { fixUrl, fetchWithRetry, throttledFetch, wait } from '../../lib/utils';
 import PodiumSection  from '../../components/PodiumSection';
 import AnimeGrid      from '../../components/AnimeGrid';
 import HeroCarousel   from '../../components/HeroCarousel';
+import SkeletonHero   from '../../components/SkeletonHero';
 import Pagination     from '../../components/Pagination';
-import LoadingSpinner from '../../components/LoadingSpinner';
 
 const INITIAL_COUNT = 15;
 
@@ -18,6 +18,7 @@ export default function Home() {
   const [topAnime,     setTopAnime]     = useState([]); // rank 1–10 buat PodiumSection
   const [searchList,   setSearchList]   = useState([]);
   const [loading,      setLoading]      = useState(true);
+  const [heroLoading,  setHeroLoading]  = useState(true); // carousel loading — set false segera setelah step 1
   const [searchQuery,  setSearchQuery]  = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [page,         setPage]         = useState(1);
@@ -90,6 +91,7 @@ export default function Home() {
 
     const run = async () => {
       setLoading(true);
+      setHeroLoading(true);
       try {
         // ── SEARCH MODE ──
         if (activeSearch) {
@@ -107,8 +109,9 @@ export default function Home() {
           const res = await fetchWithRetry(() => throttledFetch(() => home()), 2000);
           if (abortRef.current || !res) return;
           listPage1 = res?.data?.data?.recent?.animeList ?? [];
-          // raw list buat HeroCarousel (enrich sendiri di dalam komponen)
+          // raw list buat HeroCarousel — set heroLoading false SEGERA agar carousel tampil duluan
           setHeroItems(listPage1.filter((a) => a.animeId && a.poster));
+          setHeroLoading(false);
         } else {
           const res = await fetchWithRetry(() => throttledFetch(() => getRecent(page)), 2000);
           if (abortRef.current || !res) return;
@@ -118,8 +121,8 @@ export default function Home() {
         // Step 2: schedule paralel (jalan di background, bukan blocking)
         const scheduleTask = ensureSchedule();
 
-        // Step 3: recent page+1 — jeda 1500ms agar home() request tidak burst langsung
-        await wait(1500);
+        // Step 3: recent page+1 — perbesar jeda dari 600ms → 1200ms
+        await wait(1200);
         if (abortRef.current) return;
         const res2     = await fetchWithRetry(() => throttledFetch(() => getRecent(page + 1)), 2000);
         if (abortRef.current || !res2) return;
@@ -138,8 +141,8 @@ export default function Home() {
           return true;
         });
 
-        // Step 5: detail fetch (limit 2 — cukup untuk poster yang benar-benar kosong)
-        await fetchMissingDetails(allCards, 2);
+        // Step 5: detail fetch (limit 5)
+        await fetchMissingDetails(allCards, 5);
         if (abortRef.current) return;
 
         setRecentList(applyPosterCache(allCards));
@@ -147,7 +150,7 @@ export default function Home() {
 
         // Step 6: popular top 10 — fetch SEKALI, cache
         if (page === 1 && !popularCache.current) {
-          await wait(3500); // perbesar lagi: carousel mulai enrich di detik ke-3, hindari tabrakan
+          await wait(2000); // perbesar dari 800ms → 2000ms, semua step sebelumnya udah kelar
           if (abortRef.current) return;
           try {
             const rp = await fetchWithRetry(() => throttledFetch(() => getPopularAnime(1)), 2000);
@@ -232,7 +235,7 @@ export default function Home() {
         )}
       </div>
 
-      {loading ? <LoadingSpinner fullPage /> : activeSearch ? (
+      {activeSearch ? (
 
         /* ── SEARCH RESULTS ───────────────────────────────────────────── */
         <div>
@@ -247,7 +250,7 @@ export default function Home() {
               </span>
             )}
           </div>
-          <AnimeGrid list={searchList} />
+          <AnimeGrid list={searchList} loading={loading} />
           {searchList.length > 0 && (
             <Pagination page={page}
               onPrev={() => changePage(Math.max(1, page - 1))}
@@ -261,7 +264,7 @@ export default function Home() {
         <div className="space-y-10">
 
           {/* Hero carousel — BG dari poster detail API */}
-          {heroItems.length > 0 && <HeroCarousel rawList={heroItems} />}
+          {heroLoading ? <SkeletonHero /> : heroItems.length > 0 ? <HeroCarousel rawList={heroItems} /> : null}
 
           {/* Update Terbaru */}
           <section ref={sectionRef} className="scroll-mt-20">
@@ -274,7 +277,7 @@ export default function Home() {
               </span>
             </div>
 
-            <AnimeGrid list={visibleList} isNew />
+            <AnimeGrid list={visibleList} isNew loading={loading} />
 
             {hasMore && (
               <div className="flex justify-center mt-5">

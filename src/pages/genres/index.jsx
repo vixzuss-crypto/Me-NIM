@@ -3,13 +3,24 @@ import { Link, useParams } from 'react-router-dom';
 import { Tag, ArrowLeft } from 'lucide-react';
 import { getGenres, getGenreAnime } from '../../api/anime/api';
 import { extractList, fetchWithRetry } from '../../lib/utils';
-import AnimeGrid      from '../../components/AnimeGrid';
-import Pagination     from '../../components/Pagination';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import ErrorBanner    from '../../components/ErrorBanner';
-import PageHeader     from '../../components/PageHeader';
+import AnimeGrid   from '../../components/AnimeGrid';
+import Pagination  from '../../components/Pagination';
+import ErrorBanner from '../../components/ErrorBanner';
+import PageHeader  from '../../components/PageHeader';
 
-// ── Genre List (no param) ────────────────────────────────────────────────────
+// ── Skeleton genre pill ───────────────────────────────────────────────────────
+function SkeletonGenrePills() {
+  return (
+    <div className="flex flex-wrap gap-2.5 animate-pulse">
+      {Array.from({ length: 24 }).map((_, i) => (
+        <div key={i} className="h-8 rounded-xl bg-slate-800/70"
+          style={{ width: `${60 + (i % 5) * 18}px` }} />
+      ))}
+    </div>
+  );
+}
+
+// ── Genre List ────────────────────────────────────────────────────────────────
 export function GenreList() {
   const [genres,  setGenres]  = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +48,7 @@ export function GenreList() {
     <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6">
       <PageHeader icon={Tag} title="Genre Anime" subtitle="Jelajahi anime berdasarkan genre favorit kamu" />
       <ErrorBanner message={error} />
-      {loading ? <LoadingSpinner fullPage /> : (
+      {loading ? <SkeletonGenrePills /> : (
         <div className="flex flex-wrap gap-2.5">
           {genres.map((g, i) => (
             <Link key={g.genreId || i} to={`/genres/${g.genreId}`}
@@ -53,7 +64,7 @@ export function GenreList() {
   );
 }
 
-// ── Genre Detail (with :genreId) ─────────────────────────────────────────────
+// ── Genre Detail ──────────────────────────────────────────────────────────────
 export function GenreDetail() {
   const { genreId } = useParams();
   const [list,    setList]    = useState([]);
@@ -92,17 +103,11 @@ export function GenreDetail() {
           hover:text-indigo-300 transition-colors mb-5">
         <ArrowLeft className="w-3.5 h-3.5" /> Semua Genre
       </Link>
-
       <PageHeader icon={Tag} title={`Genre: ${genreLabel}`} subtitle={`Anime dengan genre ${genreLabel}`} />
       <ErrorBanner message={error} />
-
-      {loading ? <LoadingSpinner fullPage /> : (
-        <>
-          <AnimeGrid list={list} />
-          {list.length > 0 && (
-            <Pagination page={page} onPrev={() => changePage(Math.max(1, page - 1))} onNext={() => changePage(page + 1)} />
-          )}
-        </>
+      <AnimeGrid list={list} loading={loading} />
+      {!loading && list.length > 0 && (
+        <Pagination page={page} onPrev={() => changePage(Math.max(1, page - 1))} onNext={() => changePage(page + 1)} />
       )}
     </main>
   );

@@ -3,16 +3,40 @@ import { AlignLeft } from 'lucide-react';
 import { getAnimeList } from '../../api/anime/api';
 import { fetchWithRetry } from '../../lib/utils';
 import { Link } from 'react-router-dom';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import ErrorBanner    from '../../components/ErrorBanner';
-import PageHeader     from '../../components/PageHeader';
-import Pagination     from '../../components/Pagination';
+import ErrorBanner from '../../components/ErrorBanner';
+import PageHeader  from '../../components/PageHeader';
+import Pagination  from '../../components/Pagination';
+
+// ── Skeleton Browse ───────────────────────────────────────────────────────────
+function SkeletonBrowse() {
+  return (
+    <div className="animate-pulse space-y-5">
+      {/* Letter tabs skeleton */}
+      <div className="flex flex-wrap gap-1.5">
+        {Array.from({ length: 26 }).map((_, i) => (
+          <div key={i} className="w-8 h-8 rounded-lg bg-slate-800/70" />
+        ))}
+      </div>
+      {/* List skeleton */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl bg-slate-900/40 border border-slate-800/40">
+            <div className="w-7 h-5 rounded bg-slate-800/60 shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-2.5 rounded bg-slate-800/60" style={{ width: `${50 + (i % 5) * 10}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function Browse() {
-  const [sections, setSections] = useState([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState('');
-  const [page,     setPage]     = useState(1);
+  const [sections,     setSections]     = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [error,        setError]        = useState('');
+  const [page,         setPage]         = useState(1);
   const [activeLetter, setActiveLetter] = useState('');
   const abortRef = useRef(false);
 
@@ -24,7 +48,6 @@ export default function Browse() {
       try {
         const res = await fetchWithRetry(() => getAnimeList(page));
         if (abortRef.current) return;
-        // Response: data.list: [{startWith: "A", animeList: [...]}]
         const raw = res?.data?.data?.list ?? res?.data?.data ?? [];
         setSections(Array.isArray(raw) ? raw : []);
         setActiveLetter(Array.isArray(raw) && raw[0]?.startWith ? raw[0].startWith : '');
@@ -38,18 +61,16 @@ export default function Browse() {
     return () => { abortRef.current = true; };
   }, [page]);
 
-  // Kumpulkan huruf dari sections yang ada
-  const letters = sections.map((s) => s.startWith).filter(Boolean);
+  const letters      = sections.map((s) => s.startWith).filter(Boolean);
   const activeSection = sections.find((s) => s.startWith === activeLetter);
-
-  const changePage = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  const changePage    = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
       <PageHeader icon={AlignLeft} title="A–Z Anime" subtitle="Semua anime diurutkan alfabetis" />
       <ErrorBanner message={error} />
 
-      {loading ? <LoadingSpinner fullPage /> : (
+      {loading ? <SkeletonBrowse /> : (
         <>
           {/* Letter tabs */}
           {letters.length > 0 && (
@@ -67,7 +88,6 @@ export default function Browse() {
             </div>
           )}
 
-          {/* Anime list for active letter */}
           {activeSection?.animeList?.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
               {activeSection.animeList.map((anime, i) => (

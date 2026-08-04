@@ -1,6 +1,9 @@
-import AnimeCard from './AnimeCard';
+import AnimeCard    from './AnimeCard';
+import SkeletonGrid from './SkeletonGrid';
 
-export default function AnimeGrid({ list, isNew = false, withRank = false }) {
+export default function AnimeGrid({ list, isNew = false, withRank = false, loading = false, skeletonCount = 18 }) {
+  if (loading) return <SkeletonGrid count={skeletonCount} />;
+
   if (!list?.length) return (
     <div className="flex flex-col items-center justify-center py-20 gap-3 text-slate-600">
       <p className="text-sm">Tidak ada anime ditemukan.</p>

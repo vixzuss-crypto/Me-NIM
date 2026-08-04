@@ -4,17 +4,33 @@ import { Package, ArrowLeft, Download, ChevronRight, HardDrive } from 'lucide-re
 import { getBatchList, getBatchDetail } from '../../api/anime/api';
 import { extractList, fetchWithRetry, fixUrl } from '../../lib/utils';
 import { usePaginatedFetch } from '../../hooks/usePaginatedFetch';
-import LoadingSpinner from '../../components/LoadingSpinner';
-import ErrorBanner    from '../../components/ErrorBanner';
-import PageHeader     from '../../components/PageHeader';
-import Pagination     from '../../components/Pagination';
+import ErrorBanner from '../../components/ErrorBanner';
+import PageHeader  from '../../components/PageHeader';
+import Pagination  from '../../components/Pagination';
+
+// ── Skeleton batch row ────────────────────────────────────────────────────────
+function SkeletonBatchList({ count = 10 }) {
+  return (
+    <div className="flex flex-col gap-2 animate-pulse">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-slate-900/40 border border-slate-800/40">
+          <div className="shrink-0 w-12 h-16 rounded-lg bg-slate-800/70" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-3/4 rounded bg-slate-800/70" />
+            <div className="h-2.5 w-1/4 rounded bg-slate-800/50" />
+          </div>
+          <div className="w-4 h-4 rounded bg-slate-800/40 shrink-0" />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ── Batch List ────────────────────────────────────────────────────────────────
 export function BatchList() {
   const [page, setPage] = useState(1);
   const apiFn = useCallback((p) => getBatchList(p), []);
   const { list, loading, error } = usePaginatedFetch(apiFn, page);
-
   const changePage = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
   return (
@@ -22,7 +38,7 @@ export function BatchList() {
       <PageHeader icon={Package} title="Batch Download" subtitle="Download koleksi episode sekaligus" />
       <ErrorBanner message={error} />
 
-      {loading ? <LoadingSpinner fullPage /> : (
+      {loading ? <SkeletonBatchList /> : (
         <>
           <div className="flex flex-col gap-2">
             {list.length === 0
@@ -34,7 +50,6 @@ export function BatchList() {
                       className="flex items-center gap-4 p-4 rounded-xl bg-slate-900/40
                         hover:bg-slate-800/60 border border-slate-800/40 hover:border-indigo-500/30
                         transition-all group">
-                      {/* Poster thumb */}
                       <div className="shrink-0 w-12 h-16 rounded-lg overflow-hidden bg-slate-800 border border-slate-700/40">
                         {poster
                           ? <img src={poster} alt={batch.title} loading="lazy" className="w-full h-full object-cover" />
@@ -43,7 +58,6 @@ export function BatchList() {
                             </div>
                         }
                       </div>
-                      {/* Info */}
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors line-clamp-2 leading-snug">
                           {batch.title}
@@ -61,7 +75,6 @@ export function BatchList() {
                 })
             }
           </div>
-
           {list.length > 0 && (
             <Pagination page={page} onPrev={() => changePage(Math.max(1, page - 1))} onNext={() => changePage(page + 1)} />
           )}
@@ -72,6 +85,30 @@ export function BatchList() {
 }
 
 // ── Batch Detail ──────────────────────────────────────────────────────────────
+function SkeletonBatchDetail() {
+  return (
+    <div className="space-y-5 animate-pulse">
+      <div className="flex gap-5 p-5 rounded-2xl bg-slate-900/60 border border-slate-800/60">
+        <div className="shrink-0 w-24 aspect-[3/4] rounded-xl bg-slate-800/70" />
+        <div className="flex-1 space-y-3 pt-1">
+          <div className="h-5 w-2/3 rounded bg-slate-800/70" />
+          <div className="h-3 w-1/3 rounded bg-slate-800/50" />
+          <div className="flex gap-2 mt-2">
+            <div className="h-5 w-16 rounded-md bg-slate-800/60" />
+            <div className="h-5 w-12 rounded-md bg-slate-800/50" />
+          </div>
+        </div>
+      </div>
+      <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5 space-y-3">
+        <div className="h-3 w-24 rounded bg-slate-800/60" />
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-8 rounded-lg bg-slate-800/40" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function BatchDetail() {
   const { batchId } = useParams();
   const [data,    setData]    = useState(null);
@@ -82,7 +119,6 @@ export function BatchDetail() {
   useEffect(() => {
     abortRef.current = false;
     setLoading(true); setError(''); setData(null);
-
     (async () => {
       try {
         const res = await fetchWithRetry(() => getBatchDetail(batchId));
@@ -94,11 +130,10 @@ export function BatchDetail() {
         if (!abortRef.current) setLoading(false);
       }
     })();
-
     return () => { abortRef.current = true; };
   }, [batchId]);
 
-  const poster = fixUrl(data?.poster || data?.image || '');
+  const poster  = fixUrl(data?.poster || data?.image || '');
   const formats = data?.downloadUrl?.formats ?? [];
 
   return (
@@ -108,12 +143,10 @@ export function BatchDetail() {
           hover:text-indigo-300 transition-colors mb-5">
         <ArrowLeft className="w-3.5 h-3.5" /> Kembali ke Batch
       </Link>
-
       <ErrorBanner message={error} />
 
-      {loading ? <LoadingSpinner fullPage /> : data && (
+      {loading ? <SkeletonBatchDetail /> : data && (
         <div className="space-y-5">
-          {/* Hero */}
           <div className="flex gap-5 p-5 rounded-2xl bg-slate-900/60 border border-slate-800/60">
             {poster && (
               <div className="shrink-0 w-24 aspect-[3/4] rounded-xl overflow-hidden border border-slate-700/40 shadow-xl">
@@ -131,7 +164,6 @@ export function BatchDetail() {
             </div>
           </div>
 
-          {/* Download links */}
           {formats.length > 0 && (
             <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-5">
               <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-1.5">
