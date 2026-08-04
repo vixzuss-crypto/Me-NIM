@@ -19,7 +19,6 @@ export default function Footer() {
           {/* Credit */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
             <p className="text-[11px] text-slate-700">© 2026 MEANIM · Tonton sepuasnya</p>
-            <p className="text-[11px] text-slate-700">Data dari samehadaku.how</p>
           </div>
         </div>
       </div>

@@ -4,34 +4,33 @@ import { extractList, fetchWithRetry, throttledFetch } from '../lib/utils';
 /**
  * Generic hook untuk halaman yang fetch list + pagination.
  *
- * Fitur anti-abuse:
- * - AbortController: kalau user pindah halaman/ganti page sebelum response
- *   datang, request di-abort dan di-skip dari antrian (tidak buang slot quota)
- * - Cache key per endpoint+page: kalau data sudah ada, tidak request ulang
+ * Return value tambahan:
+ * - hasMore: false  → tombol Next disembunyikan (response error / data kosong / message error)
  *
- * @param {Function} apiFn    — (page) => Promise
- * @param {number}   page     — current page (state dari parent)
- * @param {string}   [cacheKeyPrefix] — prefix untuk cache key, default nama fn
+ * Logika hasMore:
+ * - Kalau response.data.message berisi string non-empty (misal "Error fetching...")  → hasMore = false
+ * - Kalau list hasil parse kosong []                                                → hasMore = false
+ * - Kalau fetch throw (429, network error setelah semua retry)                     → hasMore = false
+ * - Kalau list ada isinya                                                           → hasMore = true
  */
 export function usePaginatedFetch(apiFn, page, cacheKeyPrefix) {
   const [list,    setList]    = useState([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
+  const [hasMore, setHasMore] = useState(true);
 
-  // Ref untuk AbortController aktif — di-abort saat effect cleanup
   const acRef = useRef(null);
 
   useEffect(() => {
-    // Abort request sebelumnya kalau user pindah halaman/page lebih cepat
-    // dari selesainya response (pindah tab, ganti pagination, dsb)
     if (acRef.current) acRef.current.abort();
     const ac      = new AbortController();
     acRef.current = ac;
 
     setLoading(true);
     setError('');
+    // Reset hasMore saat page/endpoint berubah — optimistic
+    setHasMore(true);
 
-    // Cache key unik per endpoint + halaman
     const prefix   = cacheKeyPrefix || apiFn.name || 'fetch';
     const cacheKey = `${prefix}:page${page}`;
 
@@ -43,19 +42,34 @@ export function usePaginatedFetch(apiFn, page, cacheKeyPrefix) {
           ac.signal,
         );
         if (ac.signal.aborted) return;
-        setList(extractList(res));
+
+        // Detect response error dari API (status: "success" tapi message berisi error string)
+        const msg = res?.data?.message ?? '';
+        if (typeof msg === 'string' && msg.toLowerCase().includes('error')) {
+          setList([]);
+          setHasMore(false);
+          return;
+        }
+
+        const parsed = extractList(res);
+
+        // Kalau data kosong → tidak ada halaman berikutnya
+        setList(parsed);
+        setHasMore(parsed.length > 0);
+
       } catch (err) {
-        if (err?.name === 'AbortError') return; // user sudah pindah — abaikan
-        if (!ac.signal.aborted) setError('Gagal memuat data. Coba refresh.');
+        if (err?.name === 'AbortError') return;
+        if (!ac.signal.aborted) {
+          setError('Gagal memuat data. Coba refresh.');
+          setHasMore(false); // error juga → sembunyikan Next
+        }
       } finally {
         if (!ac.signal.aborted) setLoading(false);
       }
     })();
 
-    return () => {
-      ac.abort(); // cleanup: abort kalau komponen unmount atau dep berubah
-    };
+    return () => { ac.abort(); };
   }, [apiFn, page, cacheKeyPrefix]);
 
-  return { list, loading, error };
+  return { list, loading, error, hasMore };
 }

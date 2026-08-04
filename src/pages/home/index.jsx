@@ -10,15 +10,78 @@ import HeroCarousel   from '../../components/HeroCarousel';
 import SkeletonHero   from '../../components/SkeletonHero';
 import Pagination     from '../../components/Pagination';
 
-const INITIAL_COUNT = 15;
+const INITIAL_COUNT  = 15;
+const SYNOPSIS_LIMIT = 150; // karakter maksimal sinopsis hero
+
+// Cek apakah tanggal string termasuk "hari ini" atau "kemarin" (dalam 24 jam)
+function isToday(dateStr) {
+  if (!dateStr) return false;
+  try {
+    const d    = new Date(dateStr);
+    const now  = new Date();
+    const diff = now - d;
+    return diff >= 0 && diff < 86400000;
+  } catch { return false; }
+}
+
+// ── Acak & ambil n item ───────────────────────────────────────────────────────
+function sample(arr, n) {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, n);
+}
+
+// ── Enrich hero items (dijalankan di home, bukan di HeroCarousel) ─────────────
+async function enrichHeroItems(rawList, signal) {
+  const picked  = sample(rawList.filter((a) => a.animeId), 5);
+  const results = [];
+
+  for (const anime of picked) {
+    if (signal.aborted) break;
+    try {
+      const res = await fetchWithRetry(
+        () => throttledFetch(() => getAnimeDetail(anime.animeId), signal),
+        `detail:${anime.animeId}`,
+        signal,
+      );
+      if (signal.aborted) break;
+      const d      = res?.data?.data || res?.data;
+      const poster = fixUrl(d?.poster || d?.image || anime.poster || '');
+      if (!poster) continue;
+
+      const rawSynopsis = d?.synopsis?.paragraphs?.[0] || '';
+      const synopsis    = rawSynopsis.length > SYNOPSIS_LIMIT
+        ? rawSynopsis.slice(0, SYNOPSIS_LIMIT).trimEnd() + '...'
+        : rawSynopsis;
+
+      results.push({
+        animeId:  anime.animeId,
+        title:    d?.title    || anime.title,
+        poster,
+        score:    d?.score?.value ?? d?.score ?? anime.score ?? null,
+        status:   d?.status   || '',
+        type:     d?.type     || '',
+        season:   d?.season   || '',
+        studios:  d?.studios  || '',
+        synopsis,
+        genres:   (d?.genreList || []).slice(0, 3).map((g) => g.title),
+      });
+    } catch (e) {
+      if (e?.name === 'AbortError') break;
+    }
+  }
+  return results;
+}
 
 export default function Home() {
   const [recentList,   setRecentList]   = useState([]);
-  const [heroItems,    setHeroItems]    = useState([]); // raw list buat HeroCarousel
-  const [topAnime,     setTopAnime]     = useState([]); // rank 1–10 buat PodiumSection
+  const [heroItems,    setHeroItems]    = useState([]);   // sudah di-enrich
+  const [topAnime,     setTopAnime]     = useState([]);
   const [searchList,   setSearchList]   = useState([]);
   const [loading,      setLoading]      = useState(true);
-  const [heroLoading,  setHeroLoading]  = useState(true); // carousel loading — set false segera setelah step 1
   const [searchQuery,  setSearchQuery]  = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [page,         setPage]         = useState(1);
@@ -28,15 +91,18 @@ export default function Home() {
   const coverMapRef     = useRef({});
   const detailMapRef    = useRef({});
   const schedulePromise = useRef(null);
-  const popularCache    = useRef(null);   // cache top 10
+  const popularCache    = useRef(null);
 
   // ── Schedule: fetch sekali, cache di Promise ──────────────────────────────
   const ensureSchedule = useCallback(() => {
     if (!schedulePromise.current) {
       schedulePromise.current = (async () => {
         try {
-          await wait(1000); // beri jeda lebih besar sebelum schedule fetch
-          const res = await fetchWithRetry(() => throttledFetch(() => getSchedule()), 'schedule', null);
+          await wait(1000);
+          const res = await fetchWithRetry(
+            () => throttledFetch(() => getSchedule()),
+            'schedule', null,
+          );
           if (res?.data?.data?.days) {
             for (const day of res.data.data.days) {
               for (const anime of (day.animeList || [])) {
@@ -54,7 +120,6 @@ export default function Home() {
 
   // ── Detail fetch untuk poster yang missing ────────────────────────────────
   const fetchMissingDetails = useCallback(async (list, limit = 3, signal = null) => {
-    // Kurangi limit untuk menekan jumlah request
     const ids = list
       .filter((a) => a.animeId && !detailMapRef.current[a.animeId] && !coverMapRef.current[a.animeId])
       .map((a) => a.animeId)
@@ -63,17 +128,20 @@ export default function Home() {
     for (const id of ids) {
       if (signal?.aborted) break;
       try {
-        const res  = await fetchWithRetry(() => throttledFetch(() => getAnimeDetail(id), signal), `detail:${id}`, signal);
+        const res = await fetchWithRetry(
+          () => throttledFetch(() => getAnimeDetail(id), signal),
+          `detail:${id}`, signal,
+        );
         if (signal?.aborted) break;
         const data = res?.data?.data || res?.data;
         const p    = data?.poster || data?.image || data?.cover;
         if (p) detailMapRef.current[id] = fixUrl(p);
-        await wait(900); // perbesar dari 400ms → 900ms
+        await wait(900);
       } catch (_) {}
     }
   }, []);
 
-  // ── Merge poster priority: detail > schedule > raw ────────────────────────
+  // ── Merge poster ──────────────────────────────────────────────────────────
   const applyPosterCache = useCallback((list) =>
     list.map((a) => ({
       ...a,
@@ -86,13 +154,14 @@ export default function Home() {
 
   // ── Main fetch ────────────────────────────────────────────────────────────
   useEffect(() => {
-
-    // AbortController per run-invocation — abort kalau user pindah sebelum selesai
     const ac = new AbortController();
 
     const run = async () => {
       setLoading(true);
-      setHeroLoading(true);
+      setHeroItems([]);
+      setRecentList([]);
+      setTopAnime([]);
+
       try {
         // ── SEARCH MODE ──
         if (activeSearch) {
@@ -102,24 +171,23 @@ export default function Home() {
             searchKey, ac.signal,
           );
           if (ac.signal.aborted || !res) return;
-          const d   = res?.data?.data;
+          const d = res?.data?.data;
           setSearchList(Array.isArray(d) ? d : (d?.animeList ?? []));
           return;
         }
 
         // ── HOME MODE ──
-        // Step 1: home() / recent page N
         let listPage1 = [];
+        let rawHeroList = [];
+
         if (page === 1) {
           const res = await fetchWithRetry(
             () => throttledFetch(() => home(), ac.signal),
-            `home:page${page}`, ac.signal,
+            `home:page1`, ac.signal,
           );
           if (ac.signal.aborted || !res) return;
-          listPage1 = res?.data?.data?.recent?.animeList ?? [];
-          // raw list buat HeroCarousel — set heroLoading false SEGERA agar carousel tampil duluan
-          setHeroItems(listPage1.filter((a) => a.animeId && a.poster));
-          setHeroLoading(false);
+          listPage1   = res?.data?.data?.recent?.animeList ?? [];
+          rawHeroList = listPage1.filter((a) => a.animeId && a.poster);
         } else {
           const res = await fetchWithRetry(
             () => throttledFetch(() => getRecent(page), ac.signal),
@@ -129,12 +197,17 @@ export default function Home() {
           listPage1 = res?.data?.data?.animeList ?? [];
         }
 
-        // Step 2: schedule paralel (jalan di background, bukan blocking)
+        // ── Jalankan enrich hero + schedule + getRecent(page+1) SECARA PARALEL ──
+        // enrichHeroItems & popular bisa jalan bersamaan dengan schedule & recent
         const scheduleTask = ensureSchedule();
 
-        // Step 3: recent page+1 — perbesar jeda dari 600ms → 1200ms
+        const heroTask = page === 1 && rawHeroList.length > 0
+          ? enrichHeroItems(rawHeroList, ac.signal)
+          : Promise.resolve([]);
+
         await wait(1200);
         if (ac.signal.aborted) return;
+
         const res2 = await fetchWithRetry(
           () => throttledFetch(() => getRecent(page + 1), ac.signal),
           `recent:page${page + 1}`, ac.signal,
@@ -142,44 +215,52 @@ export default function Home() {
         if (ac.signal.aborted || !res2) return;
         const listPage2 = res2?.data?.data?.animeList ?? [];
 
-        // Step 4: tunggu schedule
+        // Tunggu schedule selesai isi coverMapRef
         await scheduleTask;
         if (ac.signal.aborted) return;
 
-        // Deduplicate
         const seen = new Set();
         const allCards = [...listPage1, ...listPage2].filter((a) => {
           const key = a.animeId || a.slug;
           if (!key || seen.has(key)) return false;
-          seen.add(key);
-          return true;
+          seen.add(key); return true;
         });
 
-        // Step 5: detail fetch (limit 5)
         await fetchMissingDetails(allCards, 3, ac.signal);
         if (ac.signal.aborted) return;
 
-        setRecentList(applyPosterCache(allCards));
-        setShowAll(false);
+        const merged = applyPosterCache(allCards);
 
-        // Step 6: popular top 10 — fetch SEKALI, cache
-        if (page === 1 && !popularCache.current) {
-          await wait(2000); // perbesar dari 800ms → 2000ms, semua step sebelumnya udah kelar
+        // Popular fetch (page 1 saja, cache) — paralel dengan heroTask yang masih jalan
+        let popList = popularCache.current;
+        if (page === 1 && !popList) {
+          await wait(1500);
           if (ac.signal.aborted) return;
           try {
             const rp = await fetchWithRetry(
               () => throttledFetch(() => getPopularAnime(1), ac.signal),
               'popular:page1', ac.signal,
             );
-            if (ac.signal.aborted || !rp) return;
-            const pop = rp?.data?.data?.animeList ?? [];
-            if (pop.length >= 3) {
-              popularCache.current = pop.slice(0, 10);
+            if (!ac.signal.aborted && rp) {
+              const pop = rp?.data?.data?.animeList ?? [];
+              if (pop.length >= 3) {
+                popularCache.current = pop.slice(0, 10);
+                popList = popularCache.current;
+              }
             }
           } catch (_) {}
         }
-        if (!ac.signal.aborted && popularCache.current) {
-          setTopAnime(popularCache.current);
+
+        // Tunggu hero enrich selesai — biasanya sudah selesai duluan karena jalan paralel
+        const enriched = await heroTask;
+        if (ac.signal.aborted) return;
+
+        // Set SEMUA state sekaligus — hero + cards + podium muncul bersamaan
+        if (!ac.signal.aborted) {
+          setRecentList(merged);
+          setShowAll(false);
+          if (popList)              setTopAnime(popList);
+          if (enriched.length > 0) setHeroItems(enriched);
         }
 
       } catch (err) {
@@ -197,20 +278,20 @@ export default function Home() {
   const handleSearch = (e) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
-    setPage(1);
-    setActiveSearch(searchQuery.trim());
+    setPage(1); setActiveSearch(searchQuery.trim());
   };
 
   const clearSearch = () => { setSearchQuery(''); setActiveSearch(''); setPage(1); };
 
   const changePage = (next) => {
-    setPage(next);
-    setShowAll(false);
+    setPage(next); setShowAll(false);
     setTimeout(() => sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   };
 
   const visibleList = page === 1 && !showAll ? recentList.slice(0, INITIAL_COUNT) : recentList;
   const hasMore     = page === 1 && !showAll && recentList.length > INITIAL_COUNT;
+
+  const tagAsNew = (anime) => isToday(anime?.updatedAt || anime?.date || anime?.releaseDate);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -254,7 +335,7 @@ export default function Home() {
 
       {activeSearch ? (
 
-        /* ── SEARCH RESULTS ───────────────────────────────────────────── */
+        /* ── SEARCH RESULTS ─────────────────────────────────────────── */
         <div>
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -268,7 +349,7 @@ export default function Home() {
             )}
           </div>
           <AnimeGrid list={searchList} loading={loading} />
-          {searchList.length > 0 && (
+          {!loading && searchList.length > 0 && (
             <Pagination page={page}
               onPrev={() => changePage(Math.max(1, page - 1))}
               onNext={() => changePage(page + 1)} />
@@ -277,11 +358,17 @@ export default function Home() {
 
       ) : (
 
-        /* ── BERANDA ──────────────────────────────────────────────────── */
+        /* ── BERANDA ────────────────────────────────────────────────── */
         <div className="space-y-10">
 
-          {/* Hero carousel — BG dari poster detail API */}
-          {heroLoading ? <SkeletonHero /> : heroItems.length > 0 ? <HeroCarousel rawList={heroItems} /> : null}
+          {/* Hero carousel — hanya page 1, skeleton saat loading */}
+          {page === 1 && (
+            loading
+              ? <SkeletonHero />
+              : heroItems.length > 0
+                ? <HeroCarousel items={heroItems} />
+                : null
+          )}
 
           {/* Update Terbaru */}
           <section ref={sectionRef} className="scroll-mt-20">
@@ -294,9 +381,13 @@ export default function Home() {
               </span>
             </div>
 
-            <AnimeGrid list={visibleList} isNew loading={loading} />
+            <AnimeGrid
+              list={visibleList}
+              loading={loading}
+              isNewFn={tagAsNew}
+            />
 
-            {hasMore && (
+            {!loading && hasMore && (
               <div className="flex justify-center mt-5">
                 <button onClick={() => setShowAll(true)}
                   className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400
@@ -308,7 +399,7 @@ export default function Home() {
               </div>
             )}
 
-            {(!hasMore || showAll) && (
+            {!loading && (!hasMore || showAll) && (
               <Pagination
                 page={page}
                 onPrev={() => changePage(Math.max(1, page - 1))}
@@ -316,10 +407,34 @@ export default function Home() {
             )}
           </section>
 
-          {/* Podium + mini carousel rank 4–10 */}
-          {topAnime.length >= 3 && <PodiumSection topAnime={topAnime} />}
+          {/* Podium + mini carousel rank 4–10 — skeleton saat loading */}
+          {loading
+            ? <SkeletonPodium />
+            : topAnime.length >= 3
+              ? <PodiumSection topAnime={topAnime} />
+              : null
+          }
         </div>
       )}
     </main>
+  );
+}
+
+// ── Skeleton Podium — placeholder saat loading ─────────────────────────────
+function SkeletonPodium() {
+  return (
+    <div className="animate-pulse space-y-4">
+      <div className="h-5 w-40 rounded-lg bg-slate-800/70" />
+      <div className="flex items-end justify-center gap-3 h-48">
+        <div className="w-1/4 h-36 rounded-2xl bg-slate-800/60" />
+        <div className="w-1/4 h-48 rounded-2xl bg-slate-800/70" />
+        <div className="w-1/4 h-32 rounded-2xl bg-slate-800/50" />
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-7 gap-3 mt-4">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="aspect-[3/4] rounded-xl bg-slate-800/50" />
+        ))}
+      </div>
+    </div>
   );
 }

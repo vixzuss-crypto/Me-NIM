@@ -1,53 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { Play, Star, Tv2, ChevronLeft, ChevronRight, Info } from 'lucide-react';
-import { getAnimeDetail } from '../api/anime/api';
-import { fixUrl, fetchWithRetry, throttledFetch } from '../lib/utils';
+import { Play, Star, Tv2, ChevronLeft, ChevronRight } from 'lucide-react';
 import AnimeImg from './AnimeImg';
-
-const sample = (arr, n) => {
-  const copy = [...arr];
-  for (let i = copy.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy.slice(0, n);
-};
-
-async function enrichItems(rawList, signal) {
-  const picked = sample(rawList.filter((a) => a.animeId), 5);
-  const results = [];
-
-  for (const anime of picked) {
-    if (signal.aborted) break;
-    try {
-      const res = await fetchWithRetry(
-        () => throttledFetch(() => getAnimeDetail(anime.animeId), signal),
-        `detail:${anime.animeId}`,
-        signal,
-      );
-      if (signal.aborted) break;
-      const d      = res?.data?.data || res?.data;
-      const poster = fixUrl(d?.poster || d?.image || anime.poster || '');
-      if (!poster) continue;
-      results.push({
-        animeId:  anime.animeId,
-        title:    d?.title    || anime.title,
-        poster,
-        score:    d?.score?.value ?? d?.score ?? anime.score ?? null,
-        status:   d?.status   || '',
-        type:     d?.type     || '',
-        season:   d?.season   || '',
-        studios:  d?.studios  || '',
-        synopsis: d?.synopsis?.paragraphs?.[0] || '',
-        genres:   (d?.genreList || []).slice(0, 3).map((g) => g.title),
-      });
-    } catch (e) {
-      if (e?.name === 'AbortError') break;
-    }
-  }
-  return results;
-}
 
 // ── Slide indicator dots ──────────────────────────────────────────────────────
 function Dots({ count, active, onSelect }) {
@@ -89,38 +43,26 @@ function NavBtn({ dir, onClick }) {
   );
 }
 
-export default function HeroCarousel({ rawList = [] }) {
-  const [items,    setItems]    = useState([]);
+/**
+ * HeroCarousel
+ * Terima prop `items` — array yang sudah di-enrich dari home/index.jsx.
+ * Tidak ada async fetch di sini, langsung render.
+ */
+export default function HeroCarousel({ items = [] }) {
   const [idx,      setIdx]      = useState(0);
-  const [loaded,   setLoaded]   = useState(false);
   const [paused,   setPaused]   = useState(false);
   const [imgReady, setImgReady] = useState(false);
-  const controllerRef = useRef(null);
-  const enrichedRef   = useRef(false);
-  const timerRef      = useRef(null);
+  const timerRef = useRef(null);
 
   // Touch/swipe state
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
 
+  // Reset idx ke 0 tiap kali items berubah
   useEffect(() => {
-    if (!rawList.length) return;
-    if (controllerRef.current) controllerRef.current.abort();
-    const ac = new AbortController();
-    controllerRef.current = ac;
-    enrichedRef.current   = false;
-
-    enrichItems(rawList, ac.signal).then((enriched) => {
-      if (ac.signal.aborted || enrichedRef.current) return;
-      if (!enriched.length) return;
-      enrichedRef.current = true;
-      setItems(enriched);
-      setIdx(0);
-      setLoaded(true);
-    }).catch(() => {});
-
-    return () => { ac.abort(); };
-  }, [rawList.length]);
+    setIdx(0);
+    setImgReady(false);
+  }, [items]);
 
   const go = useCallback((next) => {
     setImgReady(false);
@@ -143,7 +85,6 @@ export default function HeroCarousel({ rawList = [] }) {
     if (touchStartX.current === null) return;
     const dx = e.changedTouches[0].clientX - touchStartX.current;
     const dy = e.changedTouches[0].clientY - touchStartY.current;
-    // Hanya proses swipe horizontal (bukan scroll vertikal)
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
       go(dx < 0 ? idx + 1 : idx - 1);
     }
@@ -152,7 +93,7 @@ export default function HeroCarousel({ rawList = [] }) {
     setPaused(false);
   };
 
-  if (!loaded || !items.length) return null;
+  if (!items.length) return null;
 
   const anime = items[idx];
 
@@ -242,7 +183,7 @@ export default function HeroCarousel({ rawList = [] }) {
           )}
 
           {/* Genres */}
-          {anime.genres.length > 0 && (
+          {anime.genres?.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">
               {anime.genres.map((g) => (
                 <Link
@@ -346,7 +287,7 @@ export default function HeroCarousel({ rawList = [] }) {
             )}
 
             {/* Genres */}
-            {anime.genres.length > 0 && (
+            {anime.genres?.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {anime.genres.map((g) => (
                   <Link
@@ -362,10 +303,13 @@ export default function HeroCarousel({ rawList = [] }) {
               </div>
             )}
 
-            {/* Synopsis */}
+            {/* Synopsis — truncate 150 karakter */}
             {anime.synopsis && (
-              <p className="text-xs text-slate-400 leading-relaxed line-clamp-2 mb-5 max-w-sm hidden md:block">
-                {anime.synopsis}
+              <p className="text-xs text-slate-400 leading-relaxed mb-5 max-w-sm hidden md:block
+                overflow-hidden" style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                {anime.synopsis.length > 150
+                  ? anime.synopsis.slice(0, 150).trimEnd() + '...'
+                  : anime.synopsis}
               </p>
             )}
 

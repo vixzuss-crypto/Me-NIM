@@ -10,7 +10,7 @@ import PageHeader  from '../../components/PageHeader';
 export default function Completed() {
   const [page, setPage] = useState(1);
   const apiFn = useCallback((p) => getCompleted(p), []);
-  const { list, loading, error } = usePaginatedFetch(apiFn, page, 'completed');
+  const { list, loading, error, hasMore } = usePaginatedFetch(apiFn, page, 'completed');
 
   const changePage = (next) => { setPage(next); window.scrollTo({ top: 0, behavior: 'smooth' }); };
 
@@ -20,7 +20,12 @@ export default function Completed() {
       <ErrorBanner message={error} />
       <AnimeGrid list={list} loading={loading} />
       {!loading && list.length > 0 && (
-        <Pagination page={page} onPrev={() => changePage(Math.max(1, page - 1))} onNext={() => changePage(page + 1)} />
+        <Pagination
+          page={page}
+          hasMore={hasMore}
+          onPrev={() => changePage(Math.max(1, page - 1))}
+          onNext={() => changePage(page + 1)}
+        />
       )}
     </main>
   );
