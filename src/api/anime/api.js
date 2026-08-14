@@ -51,3 +51,38 @@ export const getAnimeList     = (page = 1)          => api.get(`samehadaku/list?
 // ── Batch ─────────────────────────────────────────────────────────────────────
 export const getBatchList     = (page = 1)          => api.get(`samehadaku/batch?page=${page}`);
 export const getBatchDetail   = (batchId)           => api.get(`samehadaku/batch/${batchId}`);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAMBAHAN — self-host wajik-anime-api (Otakudesu + Kuramanime)
+// Semua export di bawah ini BARU, tidak mengganti apapun yang di atas.
+// Client ini terpisah dari `api` (samehadaku) dan tidak ada rate limit.
+// ══════════════════════════════════════════════════════════════════════════════
+const wajikApi = axios.create({
+  baseURL: import.meta.env.VITE_WAJIK_URL,
+  timeout: 10000,
+});
+wajikApi.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status;
+    const url    = err?.config?.url ?? '';
+    if (status === 403) console.warn(`[WajikAPI] 403 Forbidden → ${url}`);
+    else if (!status)   console.warn(`[WajikAPI] Network Error → ${url}`);
+    return Promise.reject(err);
+  }
+);
+
+// ── Movies dari Otakudesu (via filter genre "movie") ──────────────────────────
+export const getMoviesOD      = (page = 1)          => wajikApi.get(`otakudesu/genre/movie?page=${page}`);
+export const getAnimeDetailOD = (animeId)           => wajikApi.get(`otakudesu/anime/${animeId}`);
+export const getEpisodeStreamOD = (episodeId)       => wajikApi.get(`otakudesu/episode/${episodeId}`);
+export const getAnimeServerOD   = (serverId)        => wajikApi.get(`otakudesu/server/${serverId}`);
+
+// ── Jelajah Kuramanime by Studio / Season / Type / Quality / Source / Country ─
+// PERINGATAN: endpoint /kuramanime/* pernah balikin 403 Forbidden waktu dites
+// sebelumnya (kemungkinan Cloudflare situs Kuramanime nge-block IP Vercel).
+// Coba dulu 1 request manual sebelum pasang halaman baru yang bergantung ke ini.
+export const getKuramanimeProperties       = (type)              => wajikApi.get(`kuramanime/properties/${type}`);
+export const getKuramanimeAnimeByProperty  = (type, id, page = 1) => wajikApi.get(`kuramanime/properties/${type}/${id}?page=${page}`);
+export const getAnimeDetailKM              = (animeId, animeSlug) => wajikApi.get(`kuramanime/anime/${animeId}/${animeSlug}`);
+export const getEpisodeStreamKM            = (animeId, animeSlug, episodeId) => wajikApi.get(`kuramanime/episode/${animeId}/${animeSlug}/${episodeId}`);

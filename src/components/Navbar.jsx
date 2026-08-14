@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Tv2, Menu, X, ChevronDown,
   Layers, CheckCircle2, Film, AlignLeft, Package,
-  List, CalendarDays, Home,
+  List, CalendarDays, Home, LayoutGrid,
 } from 'lucide-react';
 
 // ── Data ──────────────────────────────────────────────────────────────────────
@@ -11,8 +11,10 @@ const BROWSE_ITEMS = [
   { to: '/ongoing',   label: 'Ongoing',   icon: Layers,       desc: 'Anime yang sedang tayang' },
   { to: '/completed', label: 'Completed', icon: CheckCircle2, desc: 'Anime yang sudah tamat'   },
   { to: '/movies',    label: 'Movies',    icon: Film,         desc: 'Film & OVA'               },
+  { to: '/movies-od', label: 'Movies (Otakudesu)', icon: Film, desc: 'Movie tambahan dari Otakudesu' },
   { to: '/browse',    label: 'A–Z List',  icon: AlignLeft,    desc: 'Semua anime A–Z'          },
   { to: '/batch',     label: 'Batch',     icon: Package,      desc: 'Download batch'           },
+  { to: '/explore-km', label: 'Jelajah Kuramanime', icon: LayoutGrid, desc: 'By studio/season/tipe (eksperimental)' },
 ];
 
 const NAV_LINKS = [
