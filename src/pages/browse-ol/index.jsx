@@ -88,7 +88,7 @@ export default function BrowseOL() {
               const slug   = anime?.slug || anime?.href?.split('/').filter(Boolean).pop();
               const poster = anime?.poster || anime?.image || '';
               return (
-                <Link key={slug || i} to={`/detail-ol/${slug}`}
+                <Link key={`search-${slug || 'item'}-${i}`} to={`/detail-ol/${slug}`}
                   className="group flex flex-col gap-1.5 focus:outline-none">
                   <div className="relative aspect-[3/4] w-full rounded-xl overflow-hidden bg-slate-900
                     border border-slate-800/60 group-hover:border-indigo-500/40 transition-all">
@@ -116,7 +116,7 @@ export default function BrowseOL() {
         ) : (
           <div className="space-y-8">
             {sections.map((section, si) => (
-              <section key={section?.letter ?? si}>
+              <section key={`sec-${section?.letter ?? si}`}>
                 <h2 className="text-xs font-black text-indigo-400 uppercase tracking-widest mb-3
                   pb-1 border-b border-slate-800/60">
                   {section?.letter ?? '—'}
@@ -125,7 +125,7 @@ export default function BrowseOL() {
                   {(section?.animeList ?? []).map((anime, i) => {
                     const slug = anime?.slug || anime?.href?.split('/').filter(Boolean).pop();
                     return (
-                      <Link key={slug || i} to={`/detail-ol/${slug}`}
+                      <Link key={`az-${section?.letter || 'sec'}-${slug || 'item'}-${i}`} to={`/detail-ol/${slug}`}
                         className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-slate-300
                           hover:bg-indigo-600 hover:text-white border border-slate-800 hover:border-indigo-500
                           transition-all">

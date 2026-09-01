@@ -25,6 +25,7 @@ import DetailKM  from './pages/detail-km/detail';
 import { ExploreKMTypes, ExploreKMPropertyList, ExploreKMAnimeList } from './pages/explore-km/index';
 
 // Oploverz (OL)
+import HomeOL    from './pages/home-ol/index';
 import DetailOL  from './pages/detail-ol/detail';
 import WatchOL   from './pages/watch-ol/watch';
 import ScheduleOL from './pages/schedule-ol/index';
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/explore-km/:propertyType/:propertyId"          element={<ExploreKMAnimeList />}  />
 
           {/* Oploverz (OL) */}
+          <Route path="/home-ol"               element={<HomeOL />}     />
           <Route path="/jadwal-ol"             element={<ScheduleOL />} />
           <Route path="/browse-ol"             element={<BrowseOL />}   />
           <Route path="/detail-ol/:animeId"    element={<DetailOL />}   />

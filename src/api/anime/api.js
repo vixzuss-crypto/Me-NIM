@@ -76,7 +76,16 @@ wajikApi.interceptors.response.use(
 export const getHomeOL            = ()                      => wajikApi.get('oploverz/home');
 export const getScheduleOL        = ()                      => wajikApi.get('oploverz/schedule');
 export const getAnimeDirectoryOL  = (filters = {})          => wajikApi.get('oploverz/anime', { params: filters });
-export const searchAnimeOL        = (q)                     => wajikApi.get(`oploverz/search?q=${encodeURIComponent(q)}`);
+export const searchAnimeOL        = async (q)               => {
+  try {
+    return await wajikApi.get(`oploverz/search?q=${encodeURIComponent(q)}`);
+  } catch (err) {
+    if (err?.response?.status === 404) {
+      return { data: { statusCode: 200, data: { animeList: [] } } };
+    }
+    throw err;
+  }
+};
 export const getAnimeDetailOL     = (animeId)               => wajikApi.get(`oploverz/anime/${animeId}`);
 export const getEpisodeStreamOL   = (episodeId)             => wajikApi.get(`oploverz/episode/${encodeURIComponent(episodeId)}`);
 

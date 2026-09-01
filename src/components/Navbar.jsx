@@ -4,6 +4,7 @@ import {
   Tv2, Menu, X, ChevronDown,
   Layers, CheckCircle2, Film, AlignLeft, Package,
   List, CalendarDays, Home, LayoutGrid, LogIn, Radio,
+  LayoutDashboard,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logout } from '../firebase/firebase';
@@ -23,6 +24,7 @@ const BROWSE_ITEMS = [
   { section: 'Kuramanime' },
   { to: '/explore-km', label: 'Jelajah KM', icon: LayoutGrid,  desc: 'By studio/season/tipe (eksperimental)' },
   { section: 'Oploverz' },
+  { to: '/home-ol',    label: 'Home OL',   icon: LayoutDashboard, desc: 'Populer & rilis terbaru Oploverz' },
   { to: '/browse-ol',  label: 'Browse OL', icon: AlignLeft,    desc: 'Direktori A–Z Oploverz'   },
   { to: '/jadwal-ol',  label: 'Jadwal OL', icon: Radio,        desc: 'Jadwal tayang Oploverz'   },
 ];
