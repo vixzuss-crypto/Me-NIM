@@ -15,6 +15,21 @@ import Browse    from './pages/browse/index';
 import { GenreList, GenreDetail } from './pages/genres/index';
 import { BatchList, BatchDetail } from './pages/batch/index';
 
+// Otakudesu (OD)
+import MoviesOD  from './pages/movies-od/index';
+import DetailOD  from './pages/detail-od/detail';
+import WatchOD   from './pages/watch-od/watch';
+
+// Kuramanime (KM)
+import DetailKM  from './pages/detail-km/detail';
+import { ExploreKMTypes, ExploreKMPropertyList, ExploreKMAnimeList } from './pages/explore-km/index';
+
+// Oploverz (OL)
+import DetailOL  from './pages/detail-ol/detail';
+import WatchOL   from './pages/watch-ol/watch';
+import ScheduleOL from './pages/schedule-ol/index';
+import BrowseOL  from './pages/browse-ol/index';
+
 export default function App() {
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col">
@@ -42,6 +57,23 @@ export default function App() {
           {/* Batch */}
           <Route path="/batch"            element={<BatchList />}   />
           <Route path="/batch/:batchId"   element={<BatchDetail />} />
+
+          {/* Otakudesu (OD) */}
+          <Route path="/movies-od"             element={<MoviesOD />}  />
+          <Route path="/detail-od/:animeId"    element={<DetailOD />}  />
+          <Route path="/watch-od/:episodeId"   element={<WatchOD />}   />
+
+          {/* Kuramanime (KM) */}
+          <Route path="/detail-km/:animeId/:animeSlug"                element={<DetailKM />}            />
+          <Route path="/explore-km"                                    element={<ExploreKMTypes />}      />
+          <Route path="/explore-km/:propertyType"                      element={<ExploreKMPropertyList />} />
+          <Route path="/explore-km/:propertyType/:propertyId"          element={<ExploreKMAnimeList />}  />
+
+          {/* Oploverz (OL) */}
+          <Route path="/jadwal-ol"             element={<ScheduleOL />} />
+          <Route path="/browse-ol"             element={<BrowseOL />}   />
+          <Route path="/detail-ol/:animeId"    element={<DetailOL />}   />
+          <Route path="/watch-ol/:episodeId"   element={<WatchOL />}    />
 
           {/* 404 */}
           <Route path="*" element={

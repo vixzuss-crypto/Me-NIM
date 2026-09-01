@@ -3,21 +3,28 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   Tv2, Menu, X, ChevronDown,
   Layers, CheckCircle2, Film, AlignLeft, Package,
-  List, CalendarDays, Home, LayoutGrid, LogIn,
+  List, CalendarDays, Home, LayoutGrid, LogIn, Radio,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logout } from '../firebase/firebase';
 import LoginModal from './LoginModal';
 
 // ── Data ──────────────────────────────────────────────────────────────────────
+// section: null = divider label, to = link item
 const BROWSE_ITEMS = [
-  { to: '/ongoing',   label: 'Ongoing',   icon: Layers,       desc: 'Anime yang sedang tayang' },
-  { to: '/completed', label: 'Completed', icon: CheckCircle2, desc: 'Anime yang sudah tamat'   },
-  { to: '/movies',    label: 'Movies',    icon: Film,         desc: 'Film & OVA'               },
-  { to: '/movies-od', label: 'Movies (Otakudesu)', icon: Film, desc: 'Movie tambahan dari Otakudesu' },
-  { to: '/browse',    label: 'A–Z List',  icon: AlignLeft,    desc: 'Semua anime A–Z'          },
-  { to: '/batch',     label: 'Batch',     icon: Package,      desc: 'Download batch'           },
-  { to: '/explore-km', label: 'Jelajah Kuramanime', icon: LayoutGrid, desc: 'By studio/season/tipe (eksperimental)' },
+  { section: 'Samehadaku' },
+  { to: '/ongoing',    label: 'Ongoing',   icon: Layers,       desc: 'Anime yang sedang tayang' },
+  { to: '/completed',  label: 'Completed', icon: CheckCircle2, desc: 'Anime yang sudah tamat'   },
+  { to: '/movies',     label: 'Movies',    icon: Film,         desc: 'Film & OVA'               },
+  { to: '/browse',     label: 'A–Z List',  icon: AlignLeft,    desc: 'Semua anime A–Z'          },
+  { to: '/batch',      label: 'Batch',     icon: Package,      desc: 'Download batch'           },
+  { section: 'Otakudesu' },
+  { to: '/movies-od',  label: 'Movies OD', icon: Film,         desc: 'Movie dari Otakudesu'     },
+  { section: 'Kuramanime' },
+  { to: '/explore-km', label: 'Jelajah KM', icon: LayoutGrid,  desc: 'By studio/season/tipe (eksperimental)' },
+  { section: 'Oploverz' },
+  { to: '/browse-ol',  label: 'Browse OL', icon: AlignLeft,    desc: 'Direktori A–Z Oploverz'   },
+  { to: '/jadwal-ol',  label: 'Jadwal OL', icon: Radio,        desc: 'Jadwal tayang Oploverz'   },
 ];
 
 const NAV_LINKS = [
@@ -136,7 +143,17 @@ export default function Navbar() {
                   <div className="h-px w-full bg-gradient-to-r from-indigo-500/0 via-indigo-500/60 to-indigo-500/0" />
 
                   <div className="p-1.5">
-                    {BROWSE_ITEMS.map(({ to, label, icon: Icon, desc }) => {
+                    {BROWSE_ITEMS.map((item, idx) => {
+                      // Section divider label
+                      if (item.section) {
+                        return (
+                          <p key={`sec-${idx}`}
+                            className="text-[9px] font-bold text-slate-600 uppercase tracking-widest px-3 pt-2.5 pb-1 first:pt-1">
+                            {item.section}
+                          </p>
+                        );
+                      }
+                      const { to, label, icon: Icon, desc } = item;
                       const active = location.pathname.startsWith(to);
                       return (
                         <Link
@@ -272,21 +289,32 @@ export default function Navbar() {
           >
             {/* Browse section */}
             <p className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-2 mb-2">Browse</p>
-            <div className="grid grid-cols-2 gap-1 mb-3">
-              {BROWSE_ITEMS.map(({ to, label, icon: Icon }) => (
-                <Link
-                  key={to}
-                  to={to}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all ${
-                    location.pathname.startsWith(to)
-                      ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
-                      : 'bg-white/4 text-slate-300 hover:bg-white/8 hover:text-white border border-white/5'
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
-                  {label}
-                </Link>
-              ))}
+            <div className="mb-3">
+              {BROWSE_ITEMS.map((item, idx) => {
+                if (item.section) {
+                  return (
+                    <p key={`msec-${idx}`}
+                      className="text-[9px] font-bold text-slate-600 uppercase tracking-widest px-2 pt-2 pb-1 first:pt-0">
+                      {item.section}
+                    </p>
+                  );
+                }
+                const { to, label, icon: Icon } = item;
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all mb-1 ${
+                      location.pathname.startsWith(to)
+                        ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/20'
+                        : 'bg-white/4 text-slate-300 hover:bg-white/8 hover:text-white border border-white/5'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    {label}
+                  </Link>
+                );
+              })}
             </div>
 
             <div className="h-px w-full bg-white/6 mb-3" />

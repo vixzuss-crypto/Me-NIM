@@ -72,6 +72,14 @@ wajikApi.interceptors.response.use(
   }
 );
 
+// ── Oploverz ──────────────────────────────────────────────────────────────────
+export const getHomeOL            = ()                      => wajikApi.get('oploverz/home');
+export const getScheduleOL        = ()                      => wajikApi.get('oploverz/schedule');
+export const getAnimeDirectoryOL  = (filters = {})          => wajikApi.get('oploverz/anime', { params: filters });
+export const searchAnimeOL        = (q)                     => wajikApi.get(`oploverz/search?q=${encodeURIComponent(q)}`);
+export const getAnimeDetailOL     = (animeId)               => wajikApi.get(`oploverz/anime/${animeId}`);
+export const getEpisodeStreamOL   = (episodeId)             => wajikApi.get(`oploverz/episode/${encodeURIComponent(episodeId)}`);
+
 // ── Movies dari Otakudesu (via filter genre "movie") ──────────────────────────
 export const getMoviesOD      = (page = 1)          => wajikApi.get(`otakudesu/genre/movie?page=${page}`);
 export const getAnimeDetailOD = (animeId)           => wajikApi.get(`otakudesu/anime/${animeId}`);
